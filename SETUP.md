@@ -16,7 +16,7 @@ If you haven't already cloned the repository, do so with:
 
 ```bash
 git clone <repository-url>
-cd crypto-payment-gateway-trae
+cd crypto-payment-gateway
 ```
 
 ### 2. Install dependencies
