@@ -1,6 +1,9 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { User } from './User';
 
+/**
+ * Audit log action types
+ */
 export enum AuditLogAction {
   CREATE = 'create',
   UPDATE = 'update',
@@ -9,36 +12,37 @@ export enum AuditLogAction {
   LOGOUT = 'logout',
   PAYMENT_RECEIVED = 'payment_received',
   PAYMENT_CONFIRMED = 'payment_confirmed',
-  PAYMENT_SETTLED = 'payment_settled',
+  PAYMENT_FAILED = 'payment_failed',
+  WEBHOOK_SENT = 'webhook_sent',
+  WEBHOOK_FAILED = 'webhook_failed',
+  SETTLEMENT_INITIATED = 'settlement_initiated',
+  SETTLEMENT_COMPLETED = 'settlement_completed',
+  SETTLEMENT_FAILED = 'settlement_failed',
+  WALLET_CREATED = 'wallet_created',
+  WALLET_UPDATED = 'wallet_updated',
   ADDRESS_GENERATED = 'address_generated',
-  ADDRESS_CREATED = 'address_created',
   ADDRESS_EXPIRED = 'address_expired',
-  API_KEY_CREATED = 'api_key_created',
-  API_KEY_REVOKED = 'api_key_revoked',
-  WEBHOOK_CREATED = 'webhook_created',
-  WEBHOOK_UPDATED = 'webhook_updated',
-  WEBHOOK_DELETED = 'webhook_deleted',
-  MERCHANT_CREATED = 'merchant_created',
-  MERCHANT_UPDATED = 'merchant_updated',
-  MERCHANT_STATUS_CHANGED = 'merchant_status_changed',
-  MANUAL_TRANSACTION_OVERRIDE = 'manual_transaction_override',
   SYSTEM_ERROR = 'system_error',
-  SECURITY_ALERT = 'security_alert',
-  SETTLEMENT_TRIGGERED = 'settlement_triggered',
-  SETTLEMENT_PROCESSED = 'settlement_processed',
-  TRANSACTION_STATUS_UPDATED = 'transaction_status_updated',
-  COLD_STORAGE_TRANSFER = 'cold_storage_transfer',
-  COLD_STORAGE_TRANSFER_TRIGGERED = 'cold_storage_transfer_triggered'
+  BINANCE_WITHDRAWAL = 'binance_withdrawal',
+  BINANCE_DEPOSIT = 'binance_deposit',
+  BINANCE_BALANCE_CHECK = 'binance_balance_check',
+  BINANCE_API_ERROR = 'binance_api_error',
+  WITHDRAWAL_FAILED = 'withdrawal_failed'
 }
 
+/**
+ * Audit log entity types
+ */
 export enum AuditLogEntityType {
   USER = 'user',
   MERCHANT = 'merchant',
-  PAYMENT_ADDRESS = 'payment_address',
   TRANSACTION = 'transaction',
+  PAYMENT_ADDRESS = 'payment_address',
+  WALLET = 'wallet',
   WEBHOOK = 'webhook',
   API_KEY = 'api_key',
-  SYSTEM = 'system'
+  SYSTEM = 'system',
+  SETTLEMENT = 'settlement'
 }
 
 @Entity('audit_logs')
@@ -47,18 +51,18 @@ export class AuditLog {
   id: string;
 
   @Column({
-    type: 'enum',
+    type: 'varchar',
     enum: AuditLogAction
   })
   action: AuditLogAction;
 
   @Column({
-    type: 'enum',
+    type: 'varchar',
     enum: AuditLogEntityType
   })
   entityType: AuditLogEntityType;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   @Index()
   entityId: string | null;
 
@@ -68,23 +72,23 @@ export class AuditLog {
   @Column({ type: 'jsonb', nullable: true })
   newState: object | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   description: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   ipAddress: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   userAgent: string | null;
 
   @ManyToOne(() => User, user => user.auditLogs, { nullable: true })
   @JoinColumn({ name: 'user_id' })
   user: User;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   userId: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   merchantId: string | null;
 
   @CreateDateColumn()

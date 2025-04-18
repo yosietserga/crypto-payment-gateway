@@ -9,11 +9,14 @@ export enum TransactionStatus {
   CONFIRMED = 'confirmed',
   FAILED = 'failed',
   EXPIRED = 'expired',
-  SETTLED = 'settled'
+  SETTLED = 'settled',
+  COMPLETED = 'completed',
+  UNDERPAID = 'underpaid'
 }
 
 export enum TransactionType {
   PAYMENT = 'payment',
+  PAYOUT = 'payout',
   REFUND = 'refund',
   SETTLEMENT = 'settlement',
   FEE = 'fee',
@@ -25,9 +28,9 @@ export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ unique: true })
+  @Column({ unique: true, nullable: true })
   @IsNotEmpty({ message: 'Transaction hash is required' })
-  txHash: string;
+  txHash?: string;
 
   @Column({
     type: 'enum',
@@ -56,11 +59,17 @@ export class Transaction {
   @Column()
   currency: string; // USDT, etc.
 
-  @Column({ nullable: true })
-  fromAddress: string;
+  @Column({ default: 'BSC' })
+  network: string; // BSC, ETH, etc.
 
-  @Column()
-  toAddress: string;
+  @Column({ nullable: true })
+  fromAddress?: string;
+
+  @Column({ nullable: true })
+  toAddress?: string;
+
+  @Column({ nullable: true })
+  recipientAddress?: string;
 
   @Column({ default: 0 })
   confirmations: number;
@@ -79,6 +88,12 @@ export class Transaction {
 
   @Column({ nullable: true })
   webhookResponse?: string;
+
+  @Column({ nullable: true })
+  webhookUrl?: string;
+
+  @Column({ nullable: true })
+  callbackUrl?: string;
 
   @Column({ nullable: true })
   settlementTxHash?: string;

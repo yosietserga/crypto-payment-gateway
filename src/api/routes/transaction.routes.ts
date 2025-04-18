@@ -1,13 +1,17 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import { getConnection } from '../../db/connection';
-import { Transaction, TransactionStatus } from '../../db/entities/Transaction';
+import { Transaction, TransactionStatus, TransactionType } from '../../db/entities/Transaction';
 import { ApiError, asyncHandler } from '../../middleware/errorHandler';
 import { authMiddleware } from '../../middleware/authMiddleware';
 import { adminMiddleware } from '../../middleware/adminMiddleware';
 import { merchantAuthMiddleware } from '../../middleware/merchantAuthMiddleware';
 import { AuditLog, AuditLogAction, AuditLogEntityType } from '../../db/entities/AuditLog';
 import { logger } from '../../utils/logger';
+import { idempotencyMiddleware } from '../../middleware/idempotencyMiddleware';
+import { QueueService } from '../../services/queueService';
+import { WebhookService } from '../../services/webhookService';
+import { WebhookEvent } from '../../db/entities/Webhook';
 
 const router = Router();
 
@@ -290,6 +294,146 @@ router.patch(
     } catch (error) {
       logger.error('Error updating transaction', { error, transactionId });
       next(new ApiError(500, 'Failed to update transaction', true));
+    }
+  })
+);
+
+/**
+ * @route POST /api/v1/transactions/payout
+ * @desc Create a new payout to a customer
+ * @access Private (Merchant)
+ */
+router.post(
+  '/payout',
+  merchantAuthMiddleware,
+  idempotencyMiddleware,
+  [
+    body('amount').isFloat({ min: 0.01 }).toFloat(),
+    body('recipientAddress').isString().isLength({ min: 42, max: 42 }),
+    body('currency').isString().equals('USDT'),
+    body('network').isString().equals('BSC'),
+    body('callbackUrl').optional().isURL(),
+    body('webhookUrl').optional().isURL(),
+    body('metadata').optional().isObject()
+  ],
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return next(new ApiError(400, 'Validation error', true));
+    }
+
+    const merchantId = req.merchant?.id;
+    
+    if (!merchantId) {
+      return next(new ApiError(401, 'Merchant ID is required', true));
+    }
+    
+    const { amount, recipientAddress, currency, network, callbackUrl, webhookUrl, metadata } = req.body;
+    
+    try {
+      // Create a new payout transaction
+      const connection = await getConnection();
+      const transactionRepository = connection.getRepository(Transaction);
+      const auditLogRepository = connection.getRepository(AuditLog);
+      
+      // Check if Binance wallet should be used
+      const useBinanceWallet = process.env.USE_BINANCE_WALLET === 'true';
+      
+      // Create transaction record
+      const transaction = new Transaction();
+      transaction.merchantId = merchantId;
+      transaction.type = TransactionType.PAYOUT;
+      transaction.status = TransactionStatus.PENDING;
+      transaction.amount = amount;
+      transaction.currency = currency;
+      transaction.network = network;
+      transaction.recipientAddress = recipientAddress;
+      transaction.callbackUrl = callbackUrl;
+      transaction.webhookUrl = webhookUrl;
+      transaction.metadata = metadata || {};
+      
+      // Save the transaction
+      const savedTransaction = await transactionRepository.save(transaction);
+      
+      // Create audit log
+      const auditLog = AuditLog.create({
+        action: AuditLogAction.CREATE,
+        entityType: AuditLogEntityType.TRANSACTION,
+        entityId: savedTransaction.id,
+        description: `Payout transaction created for ${amount} ${currency} to ${recipientAddress}`,
+        merchantId: merchantId
+      });
+      
+      await auditLogRepository.save(auditLog);
+      
+      // Process the payout
+      let payoutResult;
+      
+      if (useBinanceWallet) {
+        // Use Binance wallet for payout
+        const { BinanceService } = await import('../../services/binanceService');
+        const binanceService = new BinanceService();
+        
+        // Queue the payout to be processed
+        await QueueService.getInstance().addToQueue('binance.payout', {
+          transactionId: savedTransaction.id,
+          amount,
+          recipientAddress,
+          currency,
+          network
+        });
+        
+        logger.info(`Queued Binance payout for transaction ${savedTransaction.id}`);
+      } else {
+        // Use local wallet for payout
+        const { BlockchainService } = await import('../../services/blockchainService');
+        const queueService = QueueService.getInstance();
+        const webhookService = new WebhookService(queueService);
+        const blockchainService = new BlockchainService(webhookService, queueService);
+        
+        // Queue the payout to be processed
+        await queueService.addToQueue('transaction.payout', {
+          transactionId: savedTransaction.id
+        });
+        
+        logger.info(`Queued blockchain payout for transaction ${savedTransaction.id}`);
+      }
+      
+      // Send initial webhook notification
+      if (webhookUrl) {
+        const { WebhookService } = await import('../../services/webhookService');
+        const queueService = QueueService.getInstance();
+        const webhookService = new WebhookService(queueService);
+        
+        await webhookService.sendWebhookNotification(
+          merchantId,
+          WebhookEvent.PAYOUT_INITIATED,
+          {
+            id: savedTransaction.id,
+            status: savedTransaction.status,
+            amount,
+            currency,
+            recipientAddress,
+            createdAt: savedTransaction.createdAt
+          }
+        );
+      }
+      
+      // Return the transaction details
+      res.status(201).json({
+        success: true,
+        data: {
+          id: savedTransaction.id,
+          status: savedTransaction.status,
+          amount,
+          currency,
+          recipientAddress,
+          createdAt: savedTransaction.createdAt
+        }
+      });
+    } catch (error) {
+      logger.error('Error creating payout transaction', { error, merchantId });
+      next(new ApiError(500, 'Failed to create payout transaction', true));
     }
   })
 );

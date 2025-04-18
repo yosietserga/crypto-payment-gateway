@@ -75,6 +75,14 @@ interface QueueConfig {
   url: string;
   retryAttempts: number;
   retryDelay: number; // in milliseconds
+  useBackoff: boolean; // whether to use exponential backoff for reconnection
+  healthCheckInterval: number; // interval in ms to check connection health
+  storeFailedMessages: boolean; // whether to store failed messages for retry
+}
+
+interface PaymentConfig {
+  underpaymentThresholdPercent: number;
+  overpaymentThresholdPercent: number;
 }
 
 interface Config {
@@ -87,12 +95,18 @@ interface Config {
   security: SecurityConfig;
   logging: LoggingConfig;
   queue: QueueConfig;
+  payment: PaymentConfig;
   idempotencyKeyExpiration: number; // in seconds
 }
 
 export const config: Config = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3000', 10),
+  
+  payment: {
+    underpaymentThresholdPercent: parseFloat(process.env.UNDERPAYMENT_THRESHOLD || '5'),
+    overpaymentThresholdPercent: parseFloat(process.env.OVERPAYMENT_THRESHOLD || '5')
+  },
   
   database: {
     host: process.env.DB_HOST || 'localhost',
@@ -165,6 +179,9 @@ export const config: Config = {
     url: process.env.RABBITMQ_URL || 'amqp://localhost',
     retryAttempts: parseInt(process.env.QUEUE_RETRY_ATTEMPTS || '5', 10),
     retryDelay: parseInt(process.env.QUEUE_RETRY_DELAY || '5000', 10), // 5 seconds
+    useBackoff: process.env.QUEUE_USE_BACKOFF === 'false' ? false : true,
+    healthCheckInterval: parseInt(process.env.QUEUE_HEALTH_CHECK_INTERVAL || '30000', 10), // 30 seconds
+    storeFailedMessages: process.env.QUEUE_STORE_FAILED_MESSAGES === 'false' ? false : true,
   },
   
   idempotencyKeyExpiration: parseInt(process.env.IDEMPOTENCY_KEY_EXPIRATION || '86400', 10), // 24 hours

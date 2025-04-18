@@ -9,6 +9,7 @@ import { WebhookEvent } from '../db/entities/Webhook';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { AuditLog, AuditLogAction, AuditLogEntityType } from '../db/entities/AuditLog';
+import { LessThan } from 'typeorm';
 
 /**
  * Service for monitoring and processing blockchain transactions
@@ -28,16 +29,34 @@ export class TransactionMonitorService {
     this.queueService = queueService;
   }
   
+  // Flag to track if direct processing is set up
+  private _directProcessingSetup: boolean = false;
+  private _directProcessingInterval: NodeJS.Timeout | null = null;
+
   /**
    * Initialize the transaction monitor service
    */
   async initialize(): Promise<void> {
     try {
-      // Start consuming from the transaction monitor queue
-      await this.queueService.consumeQueue('transaction.monitor', this.processTransactionMonitorTask.bind(this));
+      // Start consuming from the transaction monitor queue with prefetch option
+      try {
+        await this.queueService.consumeQueue('transaction.monitor', this.processTransactionMonitorTask.bind(this), {
+          prefetch: 10 // Process up to 10 messages at a time
+        });
+      } catch (queueError) {
+        const errorMessage = queueError instanceof Error ? queueError.message : 'Unknown error';
+        logger.warn(`Failed to start consuming from transaction monitor queue: ${errorMessage}. Will use direct processing.`);
+        // Don't throw - continue with direct processing
+      }
       
       // Start monitoring active addresses
-      await this.startMonitoringActiveAddresses();
+      try {
+        await this.startMonitoringActiveAddresses();
+      } catch (monitorError) {
+        const errorMessage = monitorError instanceof Error ? monitorError.message : 'Unknown error';
+        logger.warn(`Failed to start monitoring active addresses: ${errorMessage}. Address monitoring will be limited.`);
+        // Don't throw - continue with limited functionality
+      }
       
       // If queue service is in fallback mode, set up periodic transaction confirmation checks
       if (this.queueService.isInFallbackMode()) {
@@ -45,12 +64,145 @@ export class TransactionMonitorService {
         this.setupDirectTransactionProcessing();
       }
       
+      // Set up a listener for queue service fallback mode changes
+      this.setupQueueServiceListener();
+      
       logger.info('Transaction monitor service initialized successfully');
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error(`Failed to initialize transaction monitor service: ${errorMessage}`, { error });
       logger.warn('Transaction monitor service will continue with limited functionality');
+      
+      // If error is related to queue service, set up direct processing
+      try {
+        this.setupDirectTransactionProcessing();
+      } catch (directProcessingError) {
+        logger.error(`Failed to set up direct transaction processing: ${directProcessingError instanceof Error ? directProcessingError.message : 'Unknown error'}`);
+        // Continue with severely limited functionality, but don't crash the application
+      }
       // Continue execution instead of throwing error
+    }
+  }
+  
+  /**
+   * Set up a listener to detect changes in queue service mode
+   */
+  private setupQueueServiceListener(): void {
+    // Check queue service status periodically
+    setInterval(() => {
+      const isInFallbackMode = this.queueService.isInFallbackMode();
+      
+      // If queue service has entered fallback mode, set up direct processing
+      if (isInFallbackMode && !this._directProcessingSetup) {
+        logger.info('Queue service entered fallback mode, setting up direct transaction processing');
+        this.setupDirectTransactionProcessing();
+      }
+      
+      // If queue service has exited fallback mode, retry failed messages
+      if (!isInFallbackMode && this._directProcessingSetup) {
+        logger.info('Queue service exited fallback mode, retrying failed messages');
+        this.queueService.retryFailedMessages('transaction.monitor');
+        this.stopDirectTransactionProcessing();
+      }
+    }, 30000); // Check every 30 seconds
+  }
+  
+  /**
+   * Set up direct transaction processing when queue service is unavailable
+   */
+  private setupDirectTransactionProcessing(): void {
+    if (this._directProcessingSetup) {
+      return; // Already set up
+    }
+    
+    logger.info('Setting up direct transaction processing');
+    this._directProcessingSetup = true;
+    
+    // Clear any existing interval
+    if (this._directProcessingInterval) {
+      clearInterval(this._directProcessingInterval);
+    }
+    
+    // Set up periodic transaction confirmation checks
+    this._directProcessingInterval = setInterval(async () => {
+      try {
+        await this.processDirectTransactions();
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.error(`Error in direct transaction processing: ${errorMessage}`, { error });
+      }
+    }, 60000); // Check every minute
+    
+    // Run immediately
+    this.processDirectTransactions().catch(error => {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(`Error in initial direct transaction processing: ${errorMessage}`, { error });
+    });
+  }
+  
+  /**
+   * Stop direct transaction processing
+   */
+  private stopDirectTransactionProcessing(): void {
+    if (!this._directProcessingSetup) {
+      return; // Not set up
+    }
+    
+    logger.info('Stopping direct transaction processing');
+    this._directProcessingSetup = false;
+    
+    // Clear interval
+    if (this._directProcessingInterval) {
+      clearInterval(this._directProcessingInterval);
+      this._directProcessingInterval = null;
+    }
+  }
+  
+  /**
+   * Process transactions directly without using the queue
+   */
+  private async processDirectTransactions(): Promise<void> {
+    try {
+      const connection = await getConnection();
+      const transactionRepository = connection.getRepository(Transaction);
+      
+      // Find transactions that need confirmation checks
+      const pendingTransactions = await transactionRepository.find({
+        where: [
+          { status: TransactionStatus.PENDING },
+          { status: TransactionStatus.CONFIRMING }
+        ],
+        relations: ['paymentAddress'],
+        take: 50 // Process in batches to avoid memory issues
+      });
+      
+      logger.info(`Processing ${pendingTransactions.length} pending transactions directly`);
+      
+      // Process each transaction
+      for (const transaction of pendingTransactions) {
+        await this.checkTransactionConfirmations(transaction.id);
+      }
+      
+      // Check for expired addresses
+      const paymentAddressRepository = connection.getRepository(PaymentAddress);
+      const activeAddresses = await paymentAddressRepository.find({
+        where: {
+          status: AddressStatus.ACTIVE,
+          expiresAt: LessThan(new Date(Date.now() + 3600000)) // Expiring in the next hour
+        },
+        take: 50
+      });
+      
+      logger.info(`Checking ${activeAddresses.length} addresses for expiration directly`);
+      
+      // Process each address
+      for (const address of activeAddresses) {
+        await this.checkAddressExpiration(address.id);
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(`Error processing direct transactions: ${errorMessage}`, { error });
+      throw error;
     }
   }
   
@@ -142,13 +294,22 @@ export class TransactionMonitorService {
       
       // Skip if transaction is not in a state that needs confirmation checking
       if (transaction.status !== TransactionStatus.PENDING && 
-          transaction.status !== TransactionStatus.CONFIRMING &&
-          transaction.status !== TransactionStatus.CONFIRMED) {
+          transaction.status !== TransactionStatus.CONFIRMING) {
+        logger.debug(`Transaction ${transactionId} status is ${transaction.status}, skipping confirmation check`);
         return;
       }
       
       // Get current confirmations from blockchain
       const provider = new ethers.providers.JsonRpcProvider(config.blockchain.bscMainnet.rpcUrl);
+      
+      // Check if txHash exists before attempting to get transaction receipt
+      if (!transaction.txHash) {
+        logger.warn(`Transaction ${transactionId} has no txHash, skipping confirmation check`);
+        // Schedule another check in case txHash gets added later
+        await this.scheduleConfirmationCheck(transactionId, 300); // Check again in 5 minutes
+        return;
+      }
+      
       const txReceipt = await provider.getTransactionReceipt(transaction.txHash);
       
       if (!txReceipt) {
@@ -174,7 +335,8 @@ export class TransactionMonitorService {
       
       // Update status based on confirmations
       if (confirmations >= config.blockchain.bscMainnet.confirmations) {
-        if (transaction.status !== TransactionStatus.CONFIRMED) {
+        // Check if transaction is not already confirmed using a type assertion to avoid TypeScript errors
+        if ((transaction.status as string) !== TransactionStatus.CONFIRMED) {
           transaction.status = TransactionStatus.CONFIRMED;
           
           // Send webhook notification for confirmed transaction
@@ -193,7 +355,7 @@ export class TransactionMonitorService {
             }
           );
         }
-      } else if (transaction.status === TransactionStatus.PENDING) {
+      } else if ((transaction.status as string) === TransactionStatus.PENDING) {
         transaction.status = TransactionStatus.CONFIRMING;
       }
       
@@ -219,7 +381,7 @@ export class TransactionMonitorService {
       }
       
       // Schedule another check if not yet confirmed
-      if (transaction.status !== TransactionStatus.CONFIRMED) {
+      if ((transaction.status as string) !== TransactionStatus.CONFIRMED) {
         // Exponential backoff for confirmation checks
         const nextCheckDelay = Math.min(60 * Math.pow(2, Math.floor(confirmations / 2)), 3600); // Max 1 hour
         await this.scheduleConfirmationCheck(transactionId, nextCheckDelay);
@@ -358,32 +520,36 @@ export class TransactionMonitorService {
   }
   
   /**
-   * Set up direct transaction processing for fallback mode
-   * This method sets up periodic checks for pending transactions and address expirations
-   * when the queue service is in fallback mode
+   * Process address expirations directly (for fallback mode)
    */
-  private setupDirectTransactionProcessing(): void {
-    // Set up periodic transaction confirmation checks
-    setInterval(async () => {
-      try {
-        await this.processPendingTransactions();
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        logger.error(`Error in direct transaction processing: ${errorMessage}`, { error });
+  private async processAddressExpirations(): Promise<void> {
+    try {
+      const connection = await getConnection();
+      const paymentAddressRepository = connection.getRepository(PaymentAddress);
+      
+      // Find addresses that are about to expire
+      const expiringAddresses = await paymentAddressRepository.find({
+        where: {
+          status: AddressStatus.ACTIVE,
+          expiresAt: LessThan(new Date(Date.now() + 3600000)) // Expiring in the next hour
+        },
+        take: 50
+      });
+      
+      if (expiringAddresses.length === 0) {
+        return;
       }
-    }, 60000); // Check every minute
-    
-    // Set up periodic address expiration checks
-    setInterval(async () => {
-      try {
-        await this.processAddressExpirations();
-      } catch (error: unknown) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        logger.error(`Error in direct address expiration processing: ${errorMessage}`, { error });
+      
+      logger.info(`Processing ${expiringAddresses.length} expiring addresses in fallback mode`);
+      
+      // Process each address
+      for (const address of expiringAddresses) {
+        await this.checkAddressExpiration(address.id);
       }
-    }, 300000); // Check every 5 minutes
-    
-    logger.info('Direct transaction processing set up successfully for fallback mode');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(`Error processing address expirations: ${errorMessage}`, { error });
+    }
   }
   
   /**
@@ -418,36 +584,7 @@ export class TransactionMonitorService {
     }
   }
   
-  /**
-   * Process all active addresses for expiration (for fallback mode)
-   */
-  private async processAddressExpirations(): Promise<void> {
-    try {
-      const connection = await getConnection();
-      const paymentAddressRepository = connection.getRepository(PaymentAddress);
-      
-      // Find all active addresses
-      const activeAddresses = await paymentAddressRepository.find({
-        where: {
-          status: AddressStatus.ACTIVE
-        }
-      });
-      
-      if (activeAddresses.length === 0) {
-        return;
-      }
-      
-      logger.info(`Checking ${activeAddresses.length} active addresses for expiration in fallback mode`);
-      
-      // Check each address for expiration
-      for (const address of activeAddresses) {
-        await this.checkAddressExpiration(address.id);
-      }
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error(`Error processing address expirations: ${errorMessage}`, { error });
-    }
-  }
+  // The processAddressExpirations method is already implemented above
   
   /**
    * Retry sending a webhook for a transaction

@@ -56,8 +56,8 @@ app.use((req: Request, res: Response) => {
 app.use(errorHandler);
 
 // Start server
-const PORT = config.port || 3000;
-app.listen(PORT, async () => {
+const PORT = config.port || 3001;
+app.listen(PORT, '0.0.0.0', async () => {
   logger.info(`Server running on port ${PORT}`);
   
   // Initialize services
@@ -69,7 +69,7 @@ app.listen(PORT, async () => {
     const { TransactionMonitorService } = await import('./services/transactionMonitorService');
     
     // Initialize queue service with fallback capability
-    const queueService = new QueueService();
+    const queueService = QueueService.getInstance();
     try {
       await queueService.initialize();
     } catch (error) {
@@ -108,6 +108,14 @@ app.listen(PORT, async () => {
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error: Error) => {
+  // Check if this is a WebSocket 503 error that we want to handle gracefully
+  if (error.message && (error.message.includes('503') || error.message.includes('Service Unavailable') || error.message.includes('Unexpected server response'))) {
+    logger.error(`Caught unhandled WebSocket error: ${error.message}`);
+    // Don't crash the application for WebSocket errors
+    return;
+  }
+  
+  // For other uncaught exceptions, log and exit
   logger.error('Uncaught Exception:', error);
   process.exit(1);
 });

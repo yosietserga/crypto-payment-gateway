@@ -6,10 +6,19 @@ export enum WebhookEvent {
   PAYMENT_RECEIVED = 'payment.received',
   PAYMENT_CONFIRMED = 'payment.confirmed',
   PAYMENT_FAILED = 'payment.failed',
+  PAYMENT_UNDERPAID = 'payment.underpaid',
+  PAYMENT_COMPLETED = 'payment.completed',
   ADDRESS_CREATED = 'address.created',
   ADDRESS_EXPIRED = 'address.expired',
   SETTLEMENT_COMPLETED = 'settlement.completed',
-  TRANSACTION_SETTLED = 'transaction.settled'
+  TRANSACTION_SETTLED = 'transaction.settled',
+  REFUND_INITIATED = 'refund.initiated',
+  REFUND_COMPLETED = 'refund.completed',
+  REFUND_FAILED = 'refund.failed',
+  PAYOUT_INITIATED = 'payout.initiated',
+  PAYOUT_PROCESSING = 'payout.processing',
+  PAYOUT_COMPLETED = 'payout.completed',
+  PAYOUT_FAILED = 'payout.failed'
 }
 
 export enum WebhookStatus {
