@@ -27,7 +27,15 @@ export enum AuditLogAction {
   BINANCE_DEPOSIT = 'binance_deposit',
   BINANCE_BALANCE_CHECK = 'binance_balance_check',
   BINANCE_API_ERROR = 'binance_api_error',
-  WITHDRAWAL_FAILED = 'withdrawal_failed'
+  WITHDRAWAL_FAILED = 'withdrawal_failed',
+  MANUAL_TRANSACTION_OVERRIDE = 'manual_transaction_override',
+  WEBHOOK_CREATED = 'webhook_created',
+  WEBHOOK_UPDATED = 'webhook_updated',
+  WEBHOOK_DELETED = 'webhook_deleted',
+  SETTLEMENT_TRIGGERED = 'settlement_triggered',
+  COLD_STORAGE_TRANSFER_TRIGGERED = 'cold_storage_transfer_triggered',
+  COLD_STORAGE_TRANSFER = 'cold_storage_transfer',
+  TRANSACTION_STATUS_UPDATED = 'transaction_status_updated'
 }
 
 /**

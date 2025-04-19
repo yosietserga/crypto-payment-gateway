@@ -52,11 +52,15 @@ export class WebhookService {
   private webhookRepository: Repository<Webhook>;
   private queueService: QueueService;
   private circuitBreaker: HttpCircuitBreaker;
+  private maxRetries: number;
+  private retryDelay: number;
 
-  constructor(queueService: QueueService) {
+  constructor(queueService: QueueService, maxRetries?: number, retryDelay?: number) {
     this.webhookRepository = getRepository(Webhook);
     this.queueService = queueService;
     this.circuitBreaker = new HttpCircuitBreaker();
+    this.maxRetries = maxRetries || 3; // Default to 3 if not provided
+    this.retryDelay = retryDelay || 60000; // Default to 60 seconds if not provided
   }
 
   /**
@@ -125,8 +129,8 @@ export class WebhookService {
         }
 
         logger.info(`Sending ${subscribedWebhooks.length} webhook notifications for event: ${eventEnum}`);
-
-        // Queue webhook deliveries
+      
+      // Queue webhook deliveries
         for (const webhook of subscribedWebhooks) {
           if (options.sync) {
             // Process synchronously if requested
@@ -134,8 +138,8 @@ export class WebhookService {
           } else {
             // Otherwise queue for async processing
             try {
-              await this.queueService.addToQueue('webhook.send', {
-                webhookId: webhook.id,
+        await this.queueService.addToQueue('webhook.send', {
+          webhookId: webhook.id,
                 event: eventEnum,
                 payload,
                 priority: options.priority || this.isHighPriorityEvent(eventEnum),
@@ -245,31 +249,45 @@ export class WebhookService {
   }
 
   /**
-   * Process a webhook delivery with string event type
-   * @param webhookId The webhook ID
-   * @param event The webhook event as a string
-   * @param payload The webhook payload
+   * Process a webhook delivery from a raw message object directly (used by QueueService)
    */
-  async processWebhookDelivery(webhookId: string, event: string, payload: any): Promise<void>;
+  async processWebhookDelivery(data: any): Promise<void>;
 
   /**
-   * Process a webhook delivery with enum event type
-   * @param webhookId The webhook ID
-   * @param event The webhook event
-   * @param payload The webhook payload
+   * Process a webhook delivery with separate parameters
    */
-  async processWebhookDelivery(webhookId: string, event: WebhookEvent, payload: any): Promise<void>;
+  async processWebhookDelivery(webhookId: string, event: string | WebhookEvent, payload: any): Promise<void>;
 
-  // Implementation of both overloads
-  async processWebhookDelivery(webhookId: string, event: string | WebhookEvent, payload: any): Promise<void> {
-    // Convert string to enum if needed
-    const eventEnum = typeof event === 'string' ? event as unknown as WebhookEvent : event;
-    
+  /**
+   * Implementation for both overloads
+   */
+  async processWebhookDelivery(webhookIdOrData: string | any, event?: string | WebhookEvent, payload?: any): Promise<void> {
     try {
-      const webhook = await this.webhookRepository.findOne({ where: { id: webhookId } });
-      
+      // Determine which overload was called
+      let webhookId: string;
+      let eventValue: string | WebhookEvent;
+      let payloadValue: any;
+
+      if (typeof webhookIdOrData === 'string') {
+        // Called with separate parameters
+        webhookId = webhookIdOrData;
+        eventValue = event!;
+        payloadValue = payload;
+      } else {
+        // Called with a single data object (from queue)
+        const data = webhookIdOrData;
+        webhookId = data.webhookId;
+        eventValue = data.event;
+        payloadValue = data.payload;
+      }
+
+      // Continue with existing implementation using these values
+      const webhook = await this.webhookRepository.findOne({
+        where: { id: webhookId }
+      });
+
       if (!webhook) {
-        logger.warn(`Webhook ${webhookId} not found for delivery`);
+        logger.error(`Webhook ${webhookId} not found`);
         return;
       }
 
@@ -289,33 +307,33 @@ export class WebhookService {
         );
         
         // If this is a critical event, queue for retry later
-        if (this.isHighPriorityEvent(eventEnum)) {
-          await this.scheduleRetry(webhook, eventEnum, payload);
+        if (this.isHighPriorityEvent(eventValue)) {
+          await this.scheduleRetry(webhook, eventValue, payloadValue);
         }
         return;
       }
 
       // Process the payload
-      const data = webhook.sendPayload ? payload : { id: payload.id, event: eventEnum };
+      const dataToProcess = webhook.sendPayload ? payloadValue : { id: payloadValue.id, event: eventValue };
       
       // Sign the payload if a secret is defined
-      const signature = this.signPayload(JSON.stringify(data), webhook.secret);
+      const signature = this.signPayload(JSON.stringify(dataToProcess), webhook.secret);
       
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'X-Webhook-Signature': signature,
-        'X-Webhook-Event': eventEnum.toString(),
+        'X-Webhook-Event': eventValue.toString(),
       };
 
       const startTime = Date.now();
       let response;
       
       try {
-        response = await axios.post(webhook.url, data, { 
-          headers,
-          timeout: 10000 // 10 second timeout
-        });
-        
+        response = await axios.post(webhook.url, dataToProcess, { 
+        headers,
+        timeout: 10000 // 10 second timeout
+      });
+      
         const responseTime = Date.now() - startTime;
         logger.info(`Webhook ${webhookId} delivered successfully in ${responseTime}ms with status ${response.status}`);
         
@@ -325,8 +343,8 @@ export class WebhookService {
         // Update webhook status
         await this.updateWebhookStatus(webhook, 'success', null, {
           responseTime,
-          statusCode: response.status
-        });
+        statusCode: response.status
+      });
       } catch (error: any) {
         // Handle error and determine if we should retry
         let retryNeeded = false;
@@ -367,11 +385,11 @@ export class WebhookService {
         
         // Schedule retry if needed
         if (retryNeeded && webhook.shouldRetry()) {
-          await this.scheduleRetry(webhook, eventEnum, payload);
+          await this.scheduleRetry(webhook, eventValue, payloadValue);
         }
       }
     } catch (error) {
-      logger.error(`Unexpected error processing webhook ${webhookId}:`, error);
+      logger.error(`Unexpected error processing webhook:`, error);
       // Don't throw to prevent queue processing failures
     }
   }

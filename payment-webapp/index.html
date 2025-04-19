@@ -5,221 +5,351 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Crypto Payment Gateway</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="css/styles.css">
-    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #3498db;
-            --secondary-color: #2ecc71;
-            --background-color: #f8f9fa;
-            --text-color: #2c3e50;
+            --primary-color: #3a86ff;
+            --primary-dark: #2667cc;
+            --secondary-color: #8338ec;
+            --success-color: #06d6a0;
+            --warning-color: #ffbe0b;
+            --danger-color: #ef476f;
+            --light-gray: #f8f9fa;
+            --medium-gray: #dee2e6;
+            --dark-gray: #495057;
+            --card-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
             --border-radius: 12px;
-            --box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            --card-bg: #ffffff;
-            --border-color: #dee2e6;
         }
         
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background-attachment: fixed;
+            color: #212529;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
-            transition: background-color 0.3s ease, color 0.3s ease;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .container {
+            max-width: 960px;
+            padding: 2rem 1rem;
         }
         
         .payment-container {
-            max-width: 480px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        .payment-card {
-            background-color: var(--card-bg);
+            background-color: white;
             border-radius: var(--border-radius);
-            box-shadow: var(--box-shadow);
-            padding: 25px;
-            margin-bottom: 20px;
-            transition: background-color 0.3s ease;
+            box-shadow: var(--card-shadow);
+            overflow: hidden;
+            margin-bottom: 2rem;
         }
         
         .payment-header {
             text-align: center;
-            margin-bottom: 25px;
+            padding: 2rem 1.5rem;
         }
         
         .payment-logo {
             width: 80px;
             height: 80px;
-            margin-bottom: 15px;
-        }
-        
-        .payment-steps {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 30px;
-        }
-        
-        .step {
-            text-align: center;
-            position: relative;
-            flex: 1;
-        }
-        
-        .step-number {
-            width: 30px;
-            height: 30px;
             border-radius: 50%;
-            background-color: #e0e0e0;
-            color: #757575;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 10px;
-            font-weight: bold;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .payment-tabs {
+            background-color: #f8f9fa;
+            padding: 0.75rem;
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+        }
+        
+        .payment-tabs .nav-link {
+            color: var(--dark-gray);
+            font-weight: 500;
+            padding: 0.75rem 1.25rem;
+            border-radius: var(--border-radius);
+            transition: all 0.2s ease;
+        }
+        
+        .payment-tabs .nav-link.active {
+            background-color: var(--primary-color);
+            color: white;
+            box-shadow: 0 4px 12px rgba(58, 134, 255, 0.25);
+        }
+        
+        .payment-tabs .nav-link:hover:not(.active) {
+            background-color: var(--medium-gray);
+        }
+        
+        .tab-content {
+            padding: 1.5rem;
+        }
+        
+        .payment-card {
+            border-radius: var(--border-radius);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+            background: white;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
             transition: all 0.3s ease;
         }
         
-        .step.active .step-number {
-            background-color: var(--primary-color);
-            color: white;
+        .payment-card:hover {
+            box-shadow: var(--card-shadow);
+            transform: translateY(-2px);
         }
         
-        .step.completed .step-number {
-            background-color: var(--secondary-color);
-            color: white;
+        .form-group {
+            margin-bottom: 1.5rem;
         }
         
-        .step-label {
-            font-size: 0.8rem;
-            color: #757575;
+        label {
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            display: block;
+            color: var(--dark-gray);
         }
         
-        .step.active .step-label {
-            color: var(--primary-color);
-            font-weight: 600;
-        }
-        
-        .step.completed .step-label {
-            color: var(--secondary-color);
-            font-weight: 600;
-        }
-        
-        .step-line {
-            position: absolute;
-            top: 15px;
-            height: 2px;
-            width: 100%;
-            background-color: #e0e0e0;
-            left: 50%;
-            z-index: -1;
-        }
-        
-        .qr-container {
-            text-align: center;
-            margin: 20px 0;
-        }
-        
-        .qr-code {
-            width: 200px;
-            height: 200px;
-            margin: 0 auto;
-            padding: 10px;
-            background-color: white;
-            border-radius: 10px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        
-        .payment-details {
-            background-color: rgba(52, 152, 219, 0.1);
+        .form-control {
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
             border-radius: 8px;
-            padding: 15px;
-            margin: 20px 0;
+            border: 1px solid var(--medium-gray);
+            transition: all 0.2s ease;
         }
         
-        .payment-address {
-            word-break: break-all;
-            font-family: monospace;
-            font-size: 0.9rem;
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px dashed #ced4da;
+        .form-control:focus {
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(58, 134, 255, 0.25);
         }
         
-        .copy-btn {
-            background-color: var(--primary-color);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            padding: 8px 15px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        
-        .copy-btn:hover {
-            background-color: #2980b9;
-        }
-        
-        .timer {
-            text-align: center;
-            margin: 20px 0;
-            font-size: 1.2rem;
-            font-weight: bold;
-        }
-        
-        .payment-status {
-            text-align: center;
-            margin: 20px 0;
-            padding: 15px;
+        .btn {
+            font-weight: 500;
+            padding: 0.75rem 1.5rem;
             border-radius: 8px;
-        }
-        
-        .status-pending {
-            background-color: rgba(243, 156, 18, 0.2);
-            color: #d35400;
-        }
-        
-        .status-confirming {
-            background-color: rgba(52, 152, 219, 0.2);
-            color: #2980b9;
-        }
-        
-        .status-confirmed {
-            background-color: rgba(46, 204, 113, 0.2);
-            color: #27ae60;
-        }
-        
-        .status-failed {
-            background-color: rgba(231, 76, 60, 0.2);
-            color: #c0392b;
-        }
-        
-        .payment-action {
-            text-align: center;
-            margin: 25px 0 15px;
+            transition: all 0.3s ease;
         }
         
         .btn-primary {
             background-color: var(--primary-color);
             border-color: var(--primary-color);
-            padding: 10px 20px;
-            font-weight: 600;
-            border-radius: 8px;
         }
         
-        .btn-primary:hover {
-            background-color: #2980b9;
-            border-color: #2980b9;
+        .btn-primary:hover, .btn-primary:focus {
+            background-color: var(--primary-dark);
+            border-color: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(58, 134, 255, 0.25);
+        }
+        
+        .btn-outline-secondary {
+            color: var(--dark-gray);
+            border-color: var(--medium-gray);
+        }
+        
+        .btn-outline-secondary:hover {
+            background-color: var(--medium-gray);
+            color: var(--dark-gray);
+        }
+        
+        .payment-action {
+            margin-top: 2rem;
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+        }
+        
+        .payment-address-container {
+            background-color: var(--light-gray);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+        
+        .payment-address {
+            font-family: monospace;
+            word-break: break-all;
+            color: var(--dark-gray);
+            font-size: 0.9rem;
+            margin-right: 40px;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            right: 1rem;
+            top: 1rem;
+            background: white;
+            border: 1px solid var(--medium-gray);
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            transition: all 0.2s ease;
+        }
+        
+        .copy-btn:hover {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        
+        .qr-container {
+            display: flex;
+            justify-content: center;
+            margin: 1.5rem 0;
+        }
+        
+        #qrCode {
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 12px;
+            background: white;
+        }
+        
+        .payment-timer {
+            text-align: center;
+            margin: 1.5rem 0;
+        }
+        
+        .timer-display {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--dark-gray);
+        }
+        
+        .payment-steps {
+            display: flex;
+            justify-content: space-between;
+            margin: 2rem 0;
+            position: relative;
+        }
+        
+        .step {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+            z-index: 1;
+            flex: 1;
+        }
+        
+        .step-number {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: var(--medium-gray);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .step-label {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--dark-gray);
+        }
+        
+        .step-line {
+            position: absolute;
+            top: 18px;
+            left: -50%;
+            right: 50%;
+            height: 2px;
+            background-color: var(--medium-gray);
+        }
+        
+        .step.active .step-number {
+            background-color: var(--primary-color);
+            box-shadow: 0 0 0 4px rgba(58, 134, 255, 0.2);
+        }
+        
+        .step.completed .step-number {
+            background-color: var(--success-color);
+        }
+        
+        .step.completed .step-line {
+            background-color: var(--success-color);
+        }
+        
+        .payment-status {
+            text-align: center;
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1.5rem 0;
+        }
+        
+        .status-waiting {
+            background-color: rgba(255, 190, 11, 0.1);
+            color: var(--warning-color);
+            border: 1px solid rgba(255, 190, 11, 0.2);
+        }
+        
+        .status-confirming {
+            background-color: rgba(58, 134, 255, 0.1);
+            color: var(--primary-color);
+            border: 1px solid rgba(58, 134, 255, 0.2);
+        }
+        
+        .status-completed {
+            background-color: rgba(6, 214, 160, 0.1);
+            color: var(--success-color);
+            border: 1px solid rgba(6, 214, 160, 0.2);
+        }
+        
+        .status-error {
+            background-color: rgba(239, 71, 111, 0.1);
+            color: var(--danger-color);
+            border: 1px solid rgba(239, 71, 111, 0.2);
+        }
+        
+        .spin {
+            animation: spin 2s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .confirmation-icon, .error-icon {
+            font-size: 4rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .confirmation-icon {
+            color: var(--success-color);
+        }
+        
+        .error-icon {
+            color: var(--danger-color);
+        }
+        
+        .payment-details {
+            background-color: var(--light-gray);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+        }
+        
+        .payment-details label {
+            color: var(--dark-gray);
+            margin-bottom: 0.25rem;
         }
         
         .payment-footer {
             text-align: center;
-            font-size: 0.8rem;
-            color: #7f8c8d;
-            margin-top: 20px;
+            color: var(--dark-gray);
+            font-size: 0.85rem;
+            padding: 1.5rem;
+            margin-top: auto;
         }
         
         .screen {
@@ -228,381 +358,369 @@
         
         .screen.active {
             display: block;
+            animation: fadeIn 0.3s ease;
         }
         
-        .confirmation-icon {
-            font-size: 4rem;
-            color: var(--secondary-color);
-            margin-bottom: 20px;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
         
-        .error-icon {
-            font-size: 4rem;
-            color: #e74c3c;
-            margin-bottom: 20px;
-        }
-        
-        /* Tabs styling */
-        .nav-tabs {
-            border-bottom: 2px solid var(--border-color);
-            margin-bottom: 20px;
-        }
-        
-        .nav-tabs .nav-link {
-            color: var(--text-color);
-            border: none;
-            font-weight: 600;
-            padding: 12px 16px;
-            margin-right: 5px;
-            transition: all 0.3s ease;
-        }
-        
-        .nav-tabs .nav-link.active {
-            color: var(--primary-color);
-            border-bottom: 3px solid var(--primary-color);
-            background-color: transparent;
-        }
-        
-        .nav-tabs .nav-link:hover:not(.active) {
-            border-bottom: 3px solid #e0e0e0;
-        }
-        
-        /* Payout specific styles */
-        .payout-form .form-group {
-            margin-bottom: 15px;
-        }
-        
-        .payout-form label {
-            font-weight: 600;
-            margin-bottom: 5px;
-            display: block;
-        }
-        
-        .payout-form .form-control {
-            border-radius: var(--border-radius);
-            padding: 10px 15px;
-            border: 1px solid var(--border-color);
-        }
-        
-        @media (max-width: 576px) {
-            .payment-container {
-                padding: 10px;
+        /* Responsive Styles */
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
             }
             
             .payment-card {
-                padding: 15px;
+                padding: 1.5rem;
+            }
+            
+            .payment-steps {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+            
+            .step {
+                flex-direction: row;
+                align-items: center;
+                gap: 1rem;
+            }
+            
+            .step-line {
+                height: 100%;
+                width: 2px;
+                left: 18px;
+                top: -50%;
+                bottom: 50%;
             }
         }
     </style>
 </head>
 <body>
-    <div class="payment-container" id="paymentApp">
-        <!-- Top Navigation Tabs -->
-        <ul class="nav nav-tabs" id="paymentTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="receive-tab" data-bs-toggle="tab" data-bs-target="#receive-payment" type="button" role="tab" aria-controls="receive-payment" aria-selected="true">Receive Payment</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="payout-tab" data-bs-toggle="tab" data-bs-target="#send-payout" type="button" role="tab" aria-controls="send-payout" aria-selected="false">Send Payout</button>
-            </li>
-        </ul>
-        
-        <!-- Tab Content -->
-        <div class="tab-content" id="paymentTabsContent">
-            <!-- Receive Payment Tab -->
-            <div class="tab-pane fade show active" id="receive-payment" role="tabpanel" aria-labelledby="receive-tab">
-                <!-- Payment Screens -->
-                <div class="screen active" id="initScreen">
-                    <div class="payment-card">
-                        <div class="payment-header">
-                            <img src="https://placehold.co/80x80/3498db/FFFFFF?text=LOGO" alt="Logo" class="payment-logo">
-                            <h4>Crypto Payment Gateway</h4>
-                            <p>Pay securely with USDT (BEP-20)</p>
-                        </div>
-                        
-                        <div class="payment-details">
-                            <div class="mb-3">
-                                <label for="paymentAmount" class="form-label">Amount (USDT)</label>
-                                <input type="number" class="form-control" id="paymentAmount" value="10.00" min="0.01" step="0.01">
+    <div class="container">
+        <div class="payment-container">
+            <div class="payment-tabs">
+                <ul class="nav nav-tabs" id="paymentTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="receive-tab" data-bs-toggle="tab" data-bs-target="#receive-payment" type="button" role="tab" aria-controls="receive-payment" aria-selected="true">
+                            <i class="bi bi-wallet2"></i> Receive Payment
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="payout-tab" data-bs-toggle="tab" data-bs-target="#send-payout" type="button" role="tab" aria-controls="send-payout" aria-selected="false">
+                            <i class="bi bi-send"></i> Send Payout
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="tab-content" id="paymentTabsContent">
+                <!-- Receive Payment Tab -->
+                <div class="tab-pane fade show active" id="receive-payment" role="tabpanel" aria-labelledby="receive-tab">
+                    <!-- Payment Screens -->
+                    <div class="screen active" id="initScreen">
+                        <div class="payment-card">
+                            <div class="payment-header">
+                                <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTzaCX35Wd8tCWdwVbKq7cEATzuGG7MsNs6r7lTDl4&s" alt="Logo" class="payment-logo">
+                                <h4>Create Payment Request</h4>
+                                <p>Accept USDT (BEP-20) payments from your customers</p>
                             </div>
-                            <div class="mb-3">
-                                <label for="merchantCallbackUrl" class="form-label">Callback URL (Optional)</label>
-                                <input type="url" class="form-control" id="merchantCallbackUrl" placeholder="https://your-store.com/callback">
-                            </div>
-                            <div class="mb-3">
-                                <label for="merchantWebhookUrl" class="form-label">Webhook URL (Optional)</label>
-                                <input type="url" class="form-control" id="merchantWebhookUrl" placeholder="https://your-store.com/webhook">
-                            </div>
-                        </div>
-                        
-                        <div class="payment-action">
-                            <button class="btn btn-primary" id="generatePaymentBtn">Generate Payment Address</button>
+                            
+                            <form class="payment-form">
+                                <div class="form-group">
+                                    <label for="paymentAmount">Amount (USDT)</label>
+                                    <input type="number" class="form-control" id="paymentAmount" placeholder="10.00" min="0.01" step="0.01" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="merchantCallbackUrl">Callback URL (Optional)</label>
+                                    <input type="url" class="form-control" id="merchantCallbackUrl" placeholder="https://your-store.com/callback">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="merchantWebhookUrl">Webhook URL (Optional)</label>
+                                    <input type="url" class="form-control" id="merchantWebhookUrl" placeholder="https://your-store.com/webhook">
+                                </div>
+                                
+                                <div class="payment-action">
+                                    <button type="button" class="btn btn-primary" id="generatePaymentBtn">
+                                        <i class="bi bi-qr-code"></i> Generate Payment Address
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
-                </div>
-                
-                <div class="screen" id="paymentScreen">
-                    <div class="payment-card">
-                        <div class="payment-header">
-                            <h4>Pay with USDT (BEP-20)</h4>
-                            <p>Amount: <span id="displayAmount">0.00</span> USDT</p>
-                        </div>
-                        
-                        <div class="payment-steps">
-                            <div class="step active" id="step1">
-                                <div class="step-number">1</div>
-                                <div class="step-label">Payment Address</div>
+                    
+                    <div class="screen" id="paymentScreen">
+                        <div class="payment-card">
+                            <div class="payment-header">
+                                <h4>Payment Details</h4>
+                                <p>Send <span id="displayAmount">0.00</span> USDT to this address</p>
                             </div>
-                            <div class="step" id="step2">
-                                <div class="step-line"></div>
-                                <div class="step-number">2</div>
-                                <div class="step-label">Payment</div>
+                            
+                            <div class="payment-details">
+                                <div class="mb-3">
+                                    <label>Amount:</label>
+                                    <div class="fs-4 fw-bold text-center" id="detailAmount">0.00 USDT</div>
+                                </div>
                             </div>
-                            <div class="step" id="step3">
-                                <div class="step-line"></div>
-                                <div class="step-number">3</div>
-                                <div class="step-label">Confirmation</div>
-                            </div>
-                        </div>
-                        
-                        <div class="qr-container">
-                            <div class="qr-code" id="qrCode">
-                                <!-- QR Code will be inserted here -->
-                            </div>
-                        </div>
-                        
-                        <div class="payment-details">
-                            <p class="mb-2">Send exactly <strong id="detailAmount">0.00</strong> USDT to:</p>
-                            <div class="payment-address mb-2" id="paymentAddress">
-                                Loading address...
-                            </div>
-                            <div class="d-flex justify-content-center">
+                            
+                            <div class="payment-address-container">
+                                <div class="payment-address" id="paymentAddress">0x0000000000000000000000000000000000000000</div>
                                 <button class="copy-btn" id="copyAddressBtn">
-                                    <i class="bi bi-clipboard"></i> Copy Address
+                                    <i class="bi bi-clipboard"></i>
+                                </button>
+                            </div>
+                            
+                            <div class="qr-container">
+                                <canvas id="qrCode"></canvas>
+                            </div>
+                            
+                            <div class="payment-timer">
+                                <p>Time remaining to complete payment:</p>
+                                <div class="timer-display" id="paymentTimer">15:00</div>
+                            </div>
+                            
+                            <div class="payment-steps">
+                                <div class="step completed" id="step1">
+                                    <div class="step-number">1</div>
+                                    <div class="step-label">Address Generated</div>
+                                </div>
+                                <div class="step active" id="step2">
+                                    <div class="step-line"></div>
+                                    <div class="step-number">2</div>
+                                    <div class="step-label">Awaiting Payment</div>
+                                </div>
+                                <div class="step" id="step3">
+                                    <div class="step-line"></div>
+                                    <div class="step-number">3</div>
+                                    <div class="step-label">Payment Confirmed</div>
+                                </div>
+                            </div>
+                            
+                            <div class="payment-status status-waiting" id="paymentStatus">
+                                <p><i class="bi bi-hourglass-split"></i> Waiting for payment to be detected...</p>
+                            </div>
+                            
+                            <div class="payment-action">
+                                <button class="btn btn-outline-secondary" id="cancelPaymentBtn">
+                                    <i class="bi bi-x-circle"></i> Cancel
                                 </button>
                             </div>
                         </div>
-                        
-                        <div class="timer" id="paymentTimer">
-                            15:00
+                    </div>
+                    
+                    <div class="screen" id="confirmationScreen">
+                        <div class="payment-card">
+                            <div class="payment-header">
+                                <div class="confirmation-icon">
+                                    <i class="bi bi-check-circle"></i>
+                                </div>
+                                <h4>Payment Confirmed!</h4>
+                                <p>Your payment has been successfully processed.</p>
+                            </div>
+                            
+                            <div class="payment-details">
+                                <div class="mb-3">
+                                    <label class="fw-bold">Amount:</label>
+                                    <div id="confirmedAmount">0.00 USDT</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="fw-bold">Transaction ID:</label>
+                                    <div id="confirmedTxId">Loading...</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="fw-bold">Status:</label>
+                                    <div id="confirmedStatus">Confirmed</div>
+                                </div>
+                            </div>
+                            
+                            <div class="payment-action">
+                                <button class="btn btn-primary" id="returnToMerchantBtn">Return to Merchant</button>
+                            </div>
                         </div>
-                        
-                        <div class="payment-status status-pending" id="paymentStatus">
-                            <p><i class="bi bi-hourglass-split"></i> Waiting for payment...</p>
-                        </div>
-                        
-                        <div class="payment-action">
-                            <button class="btn btn-outline-secondary" id="cancelPaymentBtn">Cancel</button>
+                    </div>
+                    
+                    <div class="screen" id="errorScreen">
+                        <div class="payment-card">
+                            <div class="payment-header">
+                                <div class="error-icon">
+                                    <i class="bi bi-exclamation-circle"></i>
+                                </div>
+                                <h4>Payment Failed</h4>
+                                <p>We encountered an issue with your payment.</p>
+                            </div>
+                            
+                            <div class="payment-details">
+                                <div class="mb-3">
+                                    <label class="fw-bold">Error:</label>
+                                    <div id="errorMessage">An unexpected error occurred.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="payment-action">
+                                <button class="btn btn-primary" id="tryAgainBtn">Try Again</button>
+                            </div>
                         </div>
                     </div>
                 </div>
                 
-                <div class="screen" id="confirmationScreen">
-                    <div class="payment-card">
-                        <div class="payment-header">
-                            <div class="confirmation-icon">
-                                <i class="bi bi-check-circle"></i>
+                <!-- Send Payout Tab -->
+                <div class="tab-pane fade" id="send-payout" role="tabpanel" aria-labelledby="payout-tab">
+                    <!-- Payout Screens -->
+                    <div class="screen active" id="payoutInitScreen">
+                        <div class="payment-card">
+                            <div class="payment-header">
+                                <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTzaCX35Wd8tCWdwVbKq7cEATzuGG7MsNs6r7lTDl4&s" alt="Logo" class="payment-logo">
+                                <h4>Crypto Payout</h4>
+                                <p>Send USDT (BEP-20) to your customers</p>
                             </div>
-                            <h4>Payment Confirmed!</h4>
-                            <p>Your payment has been successfully processed.</p>
-                        </div>
-                        
-                        <div class="payment-details">
-                            <div class="mb-3">
-                                <label class="fw-bold">Amount:</label>
-                                <div id="confirmedAmount">0.00 USDT</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="fw-bold">Transaction ID:</label>
-                                <div id="confirmedTxId">Loading...</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="fw-bold">Status:</label>
-                                <div id="confirmedStatus">Confirmed</div>
-                            </div>
-                        </div>
-                        
-                        <div class="payment-action">
-                            <button class="btn btn-primary" id="returnToMerchantBtn">Return to Merchant</button>
+                            
+                            <form class="payout-form">
+                                <div class="form-group">
+                                    <label for="payoutAmount">Amount (USDT)</label>
+                                    <input type="number" class="form-control" id="payoutAmount" placeholder="10.00" min="0.01" step="0.01" required>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="recipientAddress">Recipient Address</label>
+                                    <input type="text" class="form-control" id="recipientAddress" placeholder="0x..." required>
+                                    <small class="text-muted">Enter a valid BEP-20 (BSC) wallet address</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="payoutCallbackUrl">Callback URL (Optional)</label>
+                                    <input type="url" class="form-control" id="payoutCallbackUrl" placeholder="https://your-store.com/callback">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="payoutWebhookUrl">Webhook URL (Optional)</label>
+                                    <input type="url" class="form-control" id="payoutWebhookUrl" placeholder="https://your-store.com/webhook">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="payoutDescription">Description (Optional)</label>
+                                    <textarea class="form-control" id="payoutDescription" rows="2" placeholder="Optional description or reference"></textarea>
+                                </div>
+                                
+                                <div class="payment-action">
+                                    <button type="button" class="btn btn-primary" id="createPayoutBtn">
+                                        <i class="bi bi-send"></i> Create Payout
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
-                </div>
-                
-                <div class="screen" id="errorScreen">
-                    <div class="payment-card">
-                        <div class="payment-header">
-                            <div class="error-icon">
-                                <i class="bi bi-exclamation-circle"></i>
+                    
+                    <div class="screen" id="payoutProcessingScreen">
+                        <div class="payment-card">
+                            <div class="payment-header">
+                                <h4>Processing Payout</h4>
+                                <p>Your payout is being processed</p>
                             </div>
-                            <h4>Payment Failed</h4>
-                            <p>We encountered an issue with your payment.</p>
-                        </div>
-                        
-                        <div class="payment-details">
-                            <div class="mb-3">
-                                <label class="fw-bold">Error:</label>
-                                <div id="errorMessage">An unexpected error occurred.</div>
+                            
+                            <div class="payment-steps">
+                                <div class="step completed" id="payoutStep1">
+                                    <div class="step-number">1</div>
+                                    <div class="step-label">Initiated</div>
+                                </div>
+                                <div class="step active" id="payoutStep2">
+                                    <div class="step-line"></div>
+                                    <div class="step-number">2</div>
+                                    <div class="step-label">Processing</div>
+                                </div>
+                                <div class="step" id="payoutStep3">
+                                    <div class="step-line"></div>
+                                    <div class="step-number">3</div>
+                                    <div class="step-label">Completed</div>
+                                </div>
+                            </div>
+                            
+                            <div class="payment-details">
+                                <div class="mb-3">
+                                    <label class="fw-bold">Amount:</label>
+                                    <div id="processingAmount">0.00 USDT</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="fw-bold">Recipient:</label>
+                                    <div id="processingRecipient" class="text-truncate">0x0000000000000000000000000000000000000000</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="fw-bold">Transaction ID:</label>
+                                    <div id="processingTxId">Pending...</div>
+                                </div>
+                            </div>
+                            
+                            <div class="payment-status status-confirming" id="payoutStatus">
+                                <p><i class="bi bi-arrow-repeat spin"></i> Processing your payout request...</p>
                             </div>
                         </div>
-                        
-                        <div class="payment-action">
-                            <button class="btn btn-primary" id="tryAgainBtn">Try Again</button>
+                    </div>
+                    
+                    <div class="screen" id="payoutCompletedScreen">
+                        <div class="payment-card">
+                            <div class="payment-header">
+                                <div class="confirmation-icon">
+                                    <i class="bi bi-check-circle"></i>
+                                </div>
+                                <h4>Payout Completed!</h4>
+                                <p>Your payout has been successfully processed.</p>
+                            </div>
+                            
+                            <div class="payment-details">
+                                <div class="mb-3">
+                                    <label class="fw-bold">Amount:</label>
+                                    <div id="completedAmount">0.00 USDT</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="fw-bold">Recipient:</label>
+                                    <div id="completedRecipient" class="text-truncate">0x0000000000000000000000000000000000000000</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="fw-bold">Transaction ID:</label>
+                                    <div id="completedTxId">Loading...</div>
+                                </div>
+                            </div>
+                            
+                            <div class="payment-action">
+                                <button class="btn btn-primary" id="returnToPayoutBtn">Create Another Payout</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="screen" id="payoutErrorScreen">
+                        <div class="payment-card">
+                            <div class="payment-header">
+                                <div class="error-icon">
+                                    <i class="bi bi-exclamation-circle"></i>
+                                </div>
+                                <h4>Payout Failed</h4>
+                                <p>We encountered an issue with your payout request.</p>
+                            </div>
+                            
+                            <div class="payment-details">
+                                <div class="mb-3">
+                                    <label class="fw-bold">Error:</label>
+                                    <div id="payoutErrorMessage">An unexpected error occurred.</div>
+                                </div>
+                            </div>
+                            
+                            <div class="payment-action">
+                                <button class="btn btn-primary" id="tryPayoutAgainBtn">Try Again</button>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
             
-            <!-- Send Payout Tab -->
-            <div class="tab-pane fade" id="send-payout" role="tabpanel" aria-labelledby="payout-tab">
-                <!-- Payout Screens -->
-                <div class="screen active" id="payoutInitScreen">
-                    <div class="payment-card">
-                        <div class="payment-header">
-                            <img src="https://placehold.co/80x80/3498db/FFFFFF?text=LOGO" alt="Logo" class="payment-logo">
-                            <h4>Crypto Payout</h4>
-                            <p>Send USDT (BEP-20) to your customers</p>
-                        </div>
-                        
-                        <form class="payout-form">
-                            <div class="form-group">
-                                <label for="payoutAmount">Amount (USDT)</label>
-                                <input type="number" class="form-control" id="payoutAmount" placeholder="10.00" min="0.01" step="0.01" required>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="recipientAddress">Recipient Address</label>
-                                <input type="text" class="form-control" id="recipientAddress" placeholder="0x..." required>
-                                <small class="text-muted">Enter a valid BEP-20 (BSC) wallet address</small>
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="payoutCallbackUrl">Callback URL (Optional)</label>
-                                <input type="url" class="form-control" id="payoutCallbackUrl" placeholder="https://your-store.com/callback">
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="payoutWebhookUrl">Webhook URL (Optional)</label>
-                                <input type="url" class="form-control" id="payoutWebhookUrl" placeholder="https://your-store.com/webhook">
-                            </div>
-                            
-                            <div class="form-group">
-                                <label for="payoutDescription">Description (Optional)</label>
-                                <textarea class="form-control" id="payoutDescription" rows="2" placeholder="Optional description or reference"></textarea>
-                            </div>
-                            
-                            <div class="payment-action">
-                                <button type="button" class="btn btn-primary" id="createPayoutBtn">Create Payout</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-                
-                <div class="screen" id="payoutProcessingScreen">
-                    <div class="payment-card">
-                        <div class="payment-header">
-                            <h4>Processing Payout</h4>
-                            <p>Your payout is being processed</p>
-                        </div>
-                        
-                        <div class="payment-steps">
-                            <div class="step completed" id="payoutStep1">
-                                <div class="step-number">1</div>
-                                <div class="step-label">Initiated</div>
-                            </div>
-                            <div class="step active" id="payoutStep2">
-                                <div class="step-line"></div>
-                                <div class="step-number">2</div>
-                                <div class="step-label">Processing</div>
-                            </div>
-                            <div class="step" id="payoutStep3">
-                                <div class="step-line"></div>
-                                <div class="step-number">3</div>
-                                <div class="step-label">Completed</div>
-                            </div>
-                        </div>
-                        
-                        <div class="payment-details">
-                            <div class="mb-3">
-                                <label class="fw-bold">Amount:</label>
-                                <div id="processingAmount">0.00 USDT</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="fw-bold">Recipient:</label>
-                                <div id="processingRecipient" class="text-truncate">0x0000000000000000000000000000000000000000</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="fw-bold">Transaction ID:</label>
-                                <div id="processingTxId">Pending...</div>
-                            </div>
-                        </div>
-                        
-                        <div class="payment-status status-confirming" id="payoutStatus">
-                            <p><i class="bi bi-arrow-repeat spin"></i> Processing your payout request...</p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="screen" id="payoutCompletedScreen">
-                    <div class="payment-card">
-                        <div class="payment-header">
-                            <div class="confirmation-icon">
-                                <i class="bi bi-check-circle"></i>
-                            </div>
-                            <h4>Payout Completed!</h4>
-                            <p>Your payout has been successfully processed.</p>
-                        </div>
-                        
-                        <div class="payment-details">
-                            <div class="mb-3">
-                                <label class="fw-bold">Amount:</label>
-                                <div id="completedAmount">0.00 USDT</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="fw-bold">Recipient:</label>
-                                <div id="completedRecipient" class="text-truncate">0x0000000000000000000000000000000000000000</div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="fw-bold">Transaction ID:</label>
-                                <div id="completedTxId">Loading...</div>
-                            </div>
-                        </div>
-                        
-                        <div class="payment-action">
-                            <button class="btn btn-primary" id="returnToPayoutBtn">Create Another Payout</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="screen" id="payoutErrorScreen">
-                    <div class="payment-card">
-                        <div class="payment-header">
-                            <div class="error-icon">
-                                <i class="bi bi-exclamation-circle"></i>
-                            </div>
-                            <h4>Payout Failed</h4>
-                            <p>We encountered an issue with your payout request.</p>
-                        </div>
-                        
-                        <div class="payment-details">
-                            <div class="mb-3">
-                                <label class="fw-bold">Error:</label>
-                                <div id="payoutErrorMessage">An unexpected error occurred.</div>
-                            </div>
-                        </div>
-                        
-                        <div class="payment-action">
-                            <button class="btn btn-primary" id="tryPayoutAgainBtn">Try Again</button>
-                        </div>
-                    </div>
-                </div>
+            <div class="payment-footer">
+                <p>© 2023 Crypto Payment Gateway. All rights reserved.</p>
             </div>
         </div>
-        
-        <div class="payment-footer">
-            <p>© 2023 Crypto Payment Gateway. All rights reserved.</p>
-        </div>
     </div>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
     <script src="js/app.js"></script>

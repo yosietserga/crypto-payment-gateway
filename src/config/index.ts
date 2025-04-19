@@ -78,6 +78,12 @@ interface QueueConfig {
   useBackoff: boolean; // whether to use exponential backoff for reconnection
   healthCheckInterval: number; // interval in ms to check connection health
   storeFailedMessages: boolean; // whether to store failed messages for retry
+  maxRetries?: number; // maximum number of retries for messages
+}
+
+interface WebhookConfig {
+  maxRetries: number;
+  retryDelay: number;
 }
 
 interface PaymentConfig {
@@ -96,6 +102,7 @@ interface Config {
   logging: LoggingConfig;
   queue: QueueConfig;
   payment: PaymentConfig;
+  webhook: WebhookConfig;
   idempotencyKeyExpiration: number; // in seconds
 }
 
@@ -182,6 +189,12 @@ export const config: Config = {
     useBackoff: process.env.QUEUE_USE_BACKOFF === 'false' ? false : true,
     healthCheckInterval: parseInt(process.env.QUEUE_HEALTH_CHECK_INTERVAL || '30000', 10), // 30 seconds
     storeFailedMessages: process.env.QUEUE_STORE_FAILED_MESSAGES === 'false' ? false : true,
+    maxRetries: parseInt(process.env.QUEUE_MAX_RETRIES || '3', 10),
+  },
+  
+  webhook: {
+    maxRetries: parseInt(process.env.WEBHOOK_MAX_RETRIES || '3', 10),
+    retryDelay: parseInt(process.env.WEBHOOK_RETRY_DELAY || '60000', 10) // 60 seconds
   },
   
   idempotencyKeyExpiration: parseInt(process.env.IDEMPOTENCY_KEY_EXPIRATION || '86400', 10), // 24 hours

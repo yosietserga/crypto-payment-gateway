@@ -1,4 +1,4 @@
-import amqp from 'amqplib';
+import amqp, { ConsumeMessage } from 'amqplib';
 import crypto from 'crypto';
 import { config } from '../config';
 import { logger } from '../utils/logger';
@@ -6,6 +6,7 @@ import { getConnection } from '../db/connection';
 import { Transaction, TransactionStatus } from '../db/entities/Transaction';
 import { WebhookService } from './webhookService';
 import { WebhookEvent } from '../db/entities/Webhook';
+import { BinanceService } from './binanceService';
 
 /**
  * Service for managing message queues using RabbitMQ
@@ -41,40 +42,68 @@ export class QueueService {
    */
   async initialize(): Promise<void> {
     try {
-      // Initialize RabbitMQ connection and channels
       await this.connect();
+      await this.declareQueues();
       
-      // Set up health check interval to periodically verify connection
-      if (config.queue.healthCheckInterval) {
-        this.setupHealthCheck();
-      }
-      
-      // Set up Binance payout consumer
-      try {
-        await this.setupBinancePayoutConsumer();
-      } catch (error) {
-        logger.warn('Failed to set up Binance payout consumer, will use direct processing for payouts', { error });
-        // Don't fail the whole initialization if just the payout consumer fails
-      }
-
-      // Set up Webhook consumer
+      // Add try-catch blocks for each consumer setup
       try {
         await this.setupWebhookConsumer();
+        logger.info('Webhook consumer setup successfully');
       } catch (error) {
-        logger.warn('Failed to set up Webhook consumer, will use direct processing for webhooks', { error });
-        // Don't fail the whole initialization if just the webhook consumer fails
+        logger.warn('Failed to setup webhook consumer, webhook processing may be affected', { error });
+        // Register a fallback processor for webhooks
+        this.registerFallbackProcessor('webhook.send', async (data) => {
+          try {
+            // Direct webhook processing
+            const webhookService = new WebhookService(this, config.webhook.maxRetries, config.webhook.retryDelay);
+            await webhookService.processWebhookDelivery(data);
+            logger.info('Processed webhook directly (fallback mode)');
+          } catch (webhookError) {
+            logger.error('Failed to process webhook directly', { error: webhookError });
+          }
+        });
       }
       
+      try {
+        await this.setupBinancePayoutConsumer();
+        logger.info('Binance payout consumer setup successfully');
+      } catch (error) {
+        logger.warn('Failed to setup Binance payout consumer, entering fallback mode', { error });
+        
+        // Register fallback processor for direct processing if not already registered
+        this.registerFallbackProcessor('binance.payout', async (data) => {
+          try {
+            logger.info(`Direct processing of Binance payout for transaction ${data.transactionId}`);
+            
+            // Get transaction details
+            const connection = await getConnection();
+            const transactionRepository = connection.getRepository(Transaction);
+            
+            const transaction = await transactionRepository.findOne({
+              where: { id: data.transactionId }
+            });
+            
+            if (!transaction) {
+              logger.error(`Transaction not found: ${data.transactionId}`);
+              return;
+            }
+            
+            // Process the payout using the binance service directly
+            const binanceService = new BinanceService();
+            await binanceService.processWithdrawal(transaction);
+            
+            logger.info(`Successfully processed direct Binance payout for transaction ${data.transactionId}`);
+          } catch (error) {
+            logger.error(`Error processing Binance payout directly`, { error, transactionId: data.transactionId });
+            this.storeFailedMessage('binance.payout', data, error);
+          }
+        });
+      }
+
       logger.info('Queue service initialized successfully');
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error(`Failed to initialize queue service: ${errorMessage}`, { error });
-      
-      // Enter fallback mode instead of throwing error
-      this.enterFallbackMode();
-      
-      // Schedule reconnection attempts in the background
-      this.scheduleReconnect();
+    } catch (error) {
+      logger.error('Failed to initialize queue service', { error });
+      throw error;
     }
   }
   
@@ -304,15 +333,26 @@ export class QueueService {
         await this.channel.checkQueue(queue);
         logger.info(`Queue ${queue} already exists, skipping declaration`);
       } catch (error) {
-        // Queue doesn't exist, try to declare it
+        // Queue doesn't exist or check failed, try to declare it
         try {
           await this.channel.assertQueue(queue, this.getQueueConfig(queue));
           logger.info(`Queue ${queue} declared successfully`);
         } catch (declareError) {
           logger.error(`Failed to declare queue ${queue}`, { error: declareError });
+          
+          // If this is the binance.payout queue, enter fallback mode immediately
+          if (queue === 'binance.payout') {
+            logger.warn('Critical queue binance.payout could not be declared, entering fallback mode');
+            this.enterFallbackMode();
+          }
           // Continue with other queues, don't let one failure stop the process
         }
       }
+    }
+    
+    // If we're in fallback mode due to queue declaration failures, return early
+    if (this.inFallbackMode) {
+      return;
     }
     
     // Bind retry queues to dead letter exchange - continue if one fails
@@ -703,7 +743,7 @@ export class QueueService {
       logger.info(`Processing webhook delivery for webhookId ${data.webhookId}`);
       
       // Create webhook service
-      const webhookService = new WebhookService(this);
+      const webhookService = new WebhookService(this, config.webhook.maxRetries, config.webhook.retryDelay);
       
       // Use the processWebhookDelivery method
       await webhookService.processWebhookDelivery(
@@ -787,303 +827,178 @@ export class QueueService {
   // Add this method to the QueueService class
   private async setupBinancePayoutConsumer(): Promise<void> {
     try {
-      // First, ensure the queue exists before trying to consume from it
-      if (this.channel) {
+        // Check if channel is available
+        if (!this.channel) {
+            logger.warn('Cannot setup binance payout consumer - channel not available');
+            this.registerFallbackProcessor('binance.payout', async (data: any) => {
+                try {
+                    // Process the message using BinanceService
+                    const binanceService = new BinanceService();
+                    await binanceService.processWithdrawal(data);
+                    logger.info('Processed binance payout directly (fallback mode)');
+                } catch (error) {
+                    logger.error('Failed to process binance payout directly', { error });
+                    this.storeFailedMessage('binance.payout', data, error);
+                }
+            });
+            return;
+        }
+
+        // Check if queue exists or try to create it
+        const queueName = 'binance.payout';
+        const retryQueueName = 'binance.payout.retry';
+        
         try {
-          // First check if queue exists
-          await this.channel.checkQueue('binance.payout');
-          logger.info('Queue binance.payout already exists, using existing queue');
+            // Use the existing channel directly to check queue
+            await this.channel.checkQueue(queueName);
+            logger.info(`Queue ${queueName} exists, setting up consumer`);
         } catch (error) {
-          // Queue doesn't exist, need to create it
-          logger.info('Queue binance.payout does not exist, creating it now');
-          try {
-            await this.channel.assertQueue('binance.payout', this.getQueueConfig('binance.payout'));
-          } catch (queueError) {
-            logger.error('Failed to create binance.payout queue:', { error: queueError });
-            throw queueError;
-          }
-          
-          // Also create retry queue if needed
-          try {
-            await this.channel.checkQueue('binance.payout.retry');
-          } catch (retryError) {
             try {
-              await this.channel.assertQueue('binance.payout.retry', this.getQueueConfig('binance.payout.retry'));
-              await this.channel.bindQueue('binance.payout.retry', 'dlx', 'binance.payout.retry');
-              
-              // Set up consumer for retry queue to requeue messages
-              await this.channel.consume('binance.payout.retry', (msg: amqp.ConsumeMessage | null) => {
-                if (msg) {
-                  this.channel!.sendToQueue('binance.payout', msg.content, {
-                    headers: msg.properties.headers
-                  });
-                  this.channel!.ack(msg);
-                }
-              });
-            } catch (retryQueueError) {
-              logger.error('Failed to create binance.payout.retry queue:', { error: retryQueueError });
-              // Continue without the retry queue
+                // Declare the queue if it doesn't exist
+                await this.channel.assertQueue(queueName, { 
+                    durable: true,
+                    arguments: {
+                        'x-dead-letter-exchange': 'dlx',
+                        'x-dead-letter-routing-key': retryQueueName
+                    }
+                });
+                logger.info(`Queue ${queueName} created, setting up consumer`);
+                
+                // Set up retry queue
+                await this.channel.assertQueue(retryQueueName, {
+                    durable: true,
+                    arguments: {
+                        'x-message-ttl': 60000, // 1 minute delay
+                        'x-dead-letter-exchange': '',
+                        'x-dead-letter-routing-key': queueName
+                    }
+                });
+                logger.info(`Retry queue ${retryQueueName} created`);
+            } catch (err) {
+                logger.error(`Failed to verify/create ${queueName} queue: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                this.registerFallbackProcessor('binance.payout', async (data: any) => {
+                    try {
+                        // Process the message using BinanceService
+                        const binanceService = new BinanceService();
+                        await binanceService.processWithdrawal(data);
+                        logger.info('Processed binance payout directly (fallback mode)');
+                    } catch (error) {
+                        logger.error('Failed to process binance payout directly', { error });
+                        this.storeFailedMessage('binance.payout', data, error);
+                    }
+                });
+                return;
             }
-          }
         }
-      }
-      
-      // Now consume from the queue
-      await this.consumeQueue('binance.payout', async (data) => {
+
+        // Set up the consumer
         try {
-          logger.info(`Processing Binance payout for transaction ${data.transactionId}`);
-          
-          // Get transaction details
-          const connection = await getConnection();
-          const transactionRepository = connection.getRepository(Transaction);
-          
-          const transaction = await transactionRepository.findOne({
-            where: { id: data.transactionId }
-          });
-          
-          if (!transaction) {
-            logger.error(`Transaction not found: ${data.transactionId}`);
-            return;
-          }
-          
-          // Check transaction status
-          if (transaction.status !== TransactionStatus.PENDING) {
-            logger.warn(`Transaction is not in PENDING status: ${data.transactionId}, current status: ${transaction.status}`);
-            return;
-          }
-          
-          // Update transaction status to PROCESSING
-          transaction.status = TransactionStatus.CONFIRMING;
-          await transactionRepository.save(transaction);
-          
-          // Send webhook for processing status
-          const webhookService = new WebhookService(this);
-          await webhookService.sendWebhookNotification(
-            transaction.merchantId,
-            WebhookEvent.PAYOUT_PROCESSING.toString(),
-            {
-              id: transaction.id,
-              status: transaction.status,
-              amount: transaction.amount,
-              currency: transaction.currency,
-              recipientAddress: transaction.recipientAddress,
-              createdAt: transaction.createdAt
-            }
-          );
-          
-          // Process withdrawal via Binance
-          const { BinanceService } = await import('./binanceService');
-          const binanceService = new BinanceService();
-          
-          const withdrawalResult = await binanceService.withdrawFunds(
-            transaction.currency,
-            transaction.network,
-            transaction.recipientAddress!,
-            transaction.amount,
-            transaction.id
-          );
-          
-          // Update transaction with withdrawal info
-          transaction.txHash = withdrawalResult.id;
-          transaction.status = TransactionStatus.COMPLETED;
-          transaction.metadata = {
-            ...transaction.metadata,
-            binanceWithdrawalId: withdrawalResult.id,
-            binanceTransactionFee: withdrawalResult.transactionFee
-          };
-          
-          await transactionRepository.save(transaction);
-          
-          // Send webhook for completed status
-          await webhookService.sendWebhookNotification(
-            transaction.merchantId,
-            WebhookEvent.PAYOUT_COMPLETED.toString(),
-            {
-              id: transaction.id,
-              status: transaction.status,
-              amount: transaction.amount,
-              currency: transaction.currency,
-              recipientAddress: transaction.recipientAddress,
-              txHash: withdrawalResult.id,
-              completedAt: new Date().toISOString()
-            }
-          );
-          
-          logger.info(`Binance payout completed for transaction ${transaction.id}`);
-        } catch (error: unknown) {
-          logger.error(`Error processing Binance payout`, { error, transactionId: data.transactionId });
-          
-          try {
-            // Update transaction status to FAILED
-            const connection = await getConnection();
-            const transactionRepository = connection.getRepository(Transaction);
-            
-            const transaction = await transactionRepository.findOne({
-              where: { id: data.transactionId }
-            });
-            
-            if (transaction) {
-              transaction.status = TransactionStatus.FAILED;
-              transaction.metadata = {
-                ...transaction.metadata,
-                error: error instanceof Error ? error.message : 'Unknown error'
-              };
-              await transactionRepository.save(transaction);
-              
-              // Send webhook for failed status
-              const webhookService = new WebhookService(this);
-              await webhookService.sendWebhookNotification(
-                transaction.merchantId,
-                WebhookEvent.PAYOUT_FAILED.toString(),
-                {
-                  id: transaction.id,
-                  status: transaction.status,
-                  amount: transaction.amount,
-                  currency: transaction.currency,
-                  recipientAddress: transaction.recipientAddress,
-                  error: error instanceof Error ? error.message : 'Unknown error',
-                  failedAt: new Date().toISOString()
+            await this.channel.consume(queueName, async (msg: ConsumeMessage | null) => {
+                if (!msg) return;
+                
+                try {
+                    const content = JSON.parse(msg.content.toString());
+                    logger.info(`Processing binance payout message: ${JSON.stringify(content)}`);
+                    
+                    // Process the message using BinanceService
+                    const binanceService = new BinanceService();
+                    await binanceService.processWithdrawal(content);
+                    
+                    // Acknowledge the message on successful processing
+                    this.channel.ack(msg);
+                } catch (error) {
+                    logger.error(`Error processing binance payout message: ${error instanceof Error ? error.message : 'Unknown error'}`, { error });
+                    
+                    // Check if the error is retriable
+                    const configMaxRetries = config.queue.maxRetries !== undefined ? config.queue.maxRetries : 3;
+                    const headers = msg.properties.headers || {};
+                    const retryCount = (headers['x-retry-count'] || 0) + 1;
+                    
+                    if (this.isRetriableError(error) && retryCount < configMaxRetries) {
+                        // Handle retry with dead letter exchange
+                        try {
+                            // Publish to DLX for retry
+                            this.channel.ack(msg);
+                            const delay = (config.queue.retryDelay || 5000) * Math.pow(2, retryCount - 1);
+                            await this.channel.publish('dlx', retryQueueName, msg.content, { 
+                                headers: { ...headers, 'x-retry-count': retryCount },
+                                expiration: delay  // Exponential backoff
+                            });
+                            logger.info(`Message sent to retry queue, attempt ${retryCount}`);
+                        } catch (dlxError) {
+                            logger.error(`Failed to send to retry queue: ${dlxError instanceof Error ? dlxError.message : 'Unknown error'}`);
+                            // Store failed message for manual processing
+                            this.storeFailedMessage(queueName, msg.content.toString(), error);
+                            this.channel.ack(msg);
+                        }
+                    } else {
+                        // Non-retriable error or max retries reached
+                        logger.warn(`Max retries reached or non-retriable error, message will be discarded`);
+                        this.storeFailedMessage(queueName, msg.content.toString(), error);
+                        this.channel.ack(msg);
+                    }
                 }
-              );
-            }
-          } catch (updateError) {
-            logger.error(`Error updating failed transaction`, { error: updateError, transactionId: data.transactionId });
-          }
+            }, { noAck: false });
+            
+            logger.info('Binance payout consumer setup successfully');
+        } catch (error) {
+            logger.error(`Failed to setup binance payout consumer: ${error instanceof Error ? error.message : 'Unknown error'}`, { error });
+            this.registerFallbackProcessor('binance.payout', async (data: any) => {
+                try {
+                    // Process the message using BinanceService
+                    const binanceService = new BinanceService();
+                    await binanceService.processWithdrawal(data);
+                    logger.info('Processed binance payout directly (fallback mode)');
+                } catch (error) {
+                    logger.error('Failed to process binance payout directly', { error });
+                    this.storeFailedMessage('binance.payout', data, error);
+                }
+            });
         }
-      });
     } catch (error) {
-      logger.error(`Error consuming queue binance.payout:`, { error, queue: 'binance.payout' });
-      
-      // Register a direct processor for binance.payout
-      if (!this.fallbackCallbacks.has('binance.payout')) {
-        this.fallbackCallbacks.set('binance.payout', []);
-      }
-      
-      // Add a processor for the binance.payout queue that will be used in fallback mode
-      this.fallbackCallbacks.get('binance.payout')!.push(async (data) => {
-        try {
-          logger.info(`Direct processing of Binance payout for transaction ${data.transactionId}`);
-          
-          // Get transaction details
-          const connection = await getConnection();
-          const transactionRepository = connection.getRepository(Transaction);
-          
-          const transaction = await transactionRepository.findOne({
-            where: { id: data.transactionId }
-          });
-          
-          if (!transaction) {
-            logger.error(`Transaction not found: ${data.transactionId}`);
-            return;
-          }
-          
-          // Check transaction status
-          if (transaction.status !== TransactionStatus.PENDING) {
-            logger.warn(`Transaction is not in PENDING status: ${data.transactionId}, current status: ${transaction.status}`);
-            return;
-          }
-          
-          // Update transaction status to PROCESSING
-          transaction.status = TransactionStatus.CONFIRMING;
-          await transactionRepository.save(transaction);
-          
-          // Send webhook for processing status
-          const webhookService = new WebhookService(this);
-          await webhookService.sendWebhookNotification(
-            transaction.merchantId,
-            WebhookEvent.PAYOUT_PROCESSING.toString(),
-            {
-              id: transaction.id,
-              status: transaction.status,
-              amount: transaction.amount,
-              currency: transaction.currency,
-              recipientAddress: transaction.recipientAddress,
-              createdAt: transaction.createdAt
+        logger.error(`Error in setupBinancePayoutConsumer: ${error instanceof Error ? error.message : 'Unknown error'}`, { error });
+        this.registerFallbackProcessor('binance.payout', async (data: any) => {
+            try {
+                // Process the message using BinanceService
+                const binanceService = new BinanceService();
+                await binanceService.processWithdrawal(data);
+                logger.info('Processed binance payout directly (fallback mode)');
+            } catch (error) {
+                logger.error('Failed to process binance payout directly', { error });
+                this.storeFailedMessage('binance.payout', data, error);
             }
-          );
-          
-          // Process withdrawal via Binance
-          const { BinanceService } = await import('./binanceService');
-          const binanceService = new BinanceService();
-          
-          const withdrawalResult = await binanceService.withdrawFunds(
-            transaction.currency,
-            transaction.network,
-            transaction.recipientAddress!,
-            transaction.amount,
-            transaction.id
-          );
-          
-          // Update transaction with withdrawal info
-          transaction.txHash = withdrawalResult.id;
-          transaction.status = TransactionStatus.COMPLETED;
-          transaction.metadata = {
-            ...transaction.metadata,
-            binanceWithdrawalId: withdrawalResult.id,
-            binanceTransactionFee: withdrawalResult.transactionFee
-          };
-          
-          await transactionRepository.save(transaction);
-          
-          // Send webhook for completed status
-          await webhookService.sendWebhookNotification(
-            transaction.merchantId,
-            WebhookEvent.PAYOUT_COMPLETED.toString(),
-            {
-              id: transaction.id,
-              status: transaction.status,
-              amount: transaction.amount,
-              currency: transaction.currency,
-              recipientAddress: transaction.recipientAddress,
-              txHash: withdrawalResult.id,
-              completedAt: new Date().toISOString()
-            }
-          );
-          
-          logger.info(`Binance payout completed for transaction ${transaction.id}`);
-        } catch (error: unknown) {
-          logger.error(`Error processing Binance payout directly`, { error, transactionId: data.transactionId });
-          
-          try {
-            // Update transaction status to FAILED
-            const connection = await getConnection();
-            const transactionRepository = connection.getRepository(Transaction);
-            
-            const transaction = await transactionRepository.findOne({
-              where: { id: data.transactionId }
-            });
-            
-            if (transaction) {
-              transaction.status = TransactionStatus.FAILED;
-              transaction.metadata = {
-                ...transaction.metadata,
-                error: error instanceof Error ? error.message : 'Unknown error'
-              };
-              await transactionRepository.save(transaction);
-              
-              // Send webhook for failed status
-              const webhookService = new WebhookService(this);
-              await webhookService.sendWebhookNotification(
-                transaction.merchantId,
-                WebhookEvent.PAYOUT_FAILED.toString(),
-                {
-                  id: transaction.id,
-                  status: transaction.status,
-                  amount: transaction.amount,
-                  currency: transaction.currency,
-                  recipientAddress: transaction.recipientAddress,
-                  error: error instanceof Error ? error.message : 'Unknown error',
-                  failedAt: new Date().toISOString()
-                }
-              );
-            }
-          } catch (updateError) {
-            logger.error(`Error updating failed transaction`, { error: updateError, transactionId: data.transactionId });
-          }
-        }
-      });
-      
-      throw error; // Rethrow the error to let initialize() know we need fallback mode
+        });
     }
+}
+
+// Helper method to register a fallback processor for binance payouts
+private registerFallbackProcessor(queueName: string, callback: (data: any) => Promise<void>): void {
+  if (!this.fallbackCallbacks.has(queueName)) {
+    this.fallbackCallbacks.set(queueName, []);
   }
+  
+  if (!this.fallbackCallbacks.get(queueName)?.length) {
+    this.fallbackCallbacks.get(queueName)!.push(callback);
+    logger.info(`Registered fallback processor for queue: ${queueName}`);
+  }
+}
+
+// Add this method if it doesn't exist
+private isRetriableError(error: any): boolean {
+  if (!error) return false;
+  
+  // Consider connection errors, channel errors, and some specific RabbitMQ errors as retriable
+  const retriableErrors = [
+    'CONNECTION_CLOSED',
+    'CHANNEL_CLOSED',
+    'PRECONDITION_FAILED',
+    'RESOURCE_LOCKED'
+  ];
+  
+  return (
+    error.code === 'ECONNREFUSED' ||
+    error.code === 'ETIMEDOUT' ||
+    (error.message && retriableErrors.some(e => error.message.includes(e)))
+  );
+}
 }

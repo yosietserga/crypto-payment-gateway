@@ -425,23 +425,21 @@ router.post(
       // Send test webhook
       const webhookService = getWebhookService();
       const testPayload = {
-        id: 'test-' + Date.now(),
-        test: true,
+        id: '00000000-0000-0000-0000-000000000000',
+        status: 'test',
+        amount: 10.00,
+        currency: 'USDT',
         timestamp: new Date().toISOString()
       };
 
-      await webhookService.processWebhookDelivery({
-        webhookId: webhook.id,
-        url: webhook.url,
-        payload: {
+      await webhookService.processWebhookDelivery(
+        webhook.id,
+        WebhookEvent.PAYMENT_RECEIVED,
+        {
           ...testPayload,
-          event: WebhookEvent.PAYMENT_RECEIVED,
           merchantId
-        },
-        secret: webhook.secret || '',
-        retryCount: 0,
-        maxRetries: 0 // No retries for test webhooks
-      });
+        }
+      );
 
       res.status(200).json({
         success: true,

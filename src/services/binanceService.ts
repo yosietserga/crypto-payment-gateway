@@ -6,6 +6,14 @@ import { getConnection } from '../db/connection';
 import { AuditLog, AuditLogAction, AuditLogEntityType } from '../db/entities/AuditLog';
 import { Transaction, TransactionStatus, TransactionType } from '../db/entities/Transaction';
 
+// Add the PROCESSING status since it's used but not defined in the entity
+// We'll extend the enum for our internal use
+enum ExtendedTransactionStatus {
+  PROCESSING = 'processing',
+  PENDING = TransactionStatus.PENDING,
+  FAILED = TransactionStatus.FAILED
+}
+
 /**
  * Service for interacting with Binance exchange API
  */
@@ -416,12 +424,96 @@ export class BinanceService {
   }
 
   /**
-   * Create an audit log for withdrawal
-   * @param transactionId Transaction ID
-   * @param withdrawalId Binance withdrawal ID
-   * @param asset Asset symbol
-   * @param amount Withdrawal amount
-   * @param address Destination address
+   * Process a withdrawal transaction
+   * @param transaction The transaction to process
+   * @returns Result of the withdrawal operation
+   */
+  async processWithdrawal(transaction: Transaction): Promise<{
+    id: string;
+    amount: string;
+    transactionFee: string;
+    status: string;
+  }> {
+    try {
+      if (!transaction || !transaction.id) {
+        throw new Error('Invalid transaction provided');
+      }
+
+      if (transaction.type !== TransactionType.PAYOUT) {
+        throw new Error(`Transaction ${transaction.id} is not a payout transaction`);
+      }
+
+      logger.info(`Processing withdrawal for transaction ${transaction.id}`);
+
+      if (!transaction.amount || !transaction.currency || !transaction.recipientAddress || !transaction.network) {
+        throw new Error(`Missing required withdrawal parameters for transaction ${transaction.id}`);
+      }
+
+      // Update transaction status to processing
+      const connection = await getConnection();
+      const transactionRepository = connection.getRepository(Transaction);
+      
+      transaction.status = ExtendedTransactionStatus.PROCESSING as unknown as TransactionStatus;
+      await transactionRepository.save(transaction);
+      
+      // Execute the withdrawal
+      const result = await this.withdrawFunds(
+        transaction.currency,
+        transaction.network,
+        transaction.recipientAddress,
+        Number(transaction.amount),
+        transaction.id
+      );
+      
+      // Update transaction with withdrawal ID and status
+      transaction.externalId = result.id;
+      transaction.status = TransactionStatus.PENDING;
+      transaction.metadata = {
+        ...transaction.metadata,
+        withdrawalId: result.id,
+        transactionFee: result.transactionFee
+      };
+      
+      await transactionRepository.save(transaction);
+      
+      logger.info(`Withdrawal processed successfully for transaction ${transaction.id}`);
+      
+      return result;
+    } catch (error) {
+      logger.error(`Failed to process withdrawal for transaction ${transaction?.id}`, { error });
+      
+      // Update transaction to failed state if possible
+      try {
+        if (transaction && transaction.id) {
+          const connection = await getConnection();
+          const transactionRepository = connection.getRepository(Transaction);
+          
+          transaction.status = TransactionStatus.FAILED;
+          transaction.metadata = {
+            ...transaction.metadata,
+            failureReason: error instanceof Error ? error.message : 'Unknown error'
+          };
+          
+          await transactionRepository.save(transaction);
+        }
+      } catch (updateError) {
+        logger.error(`Failed to update transaction status after withdrawal failure`, { 
+          updateError, 
+          transactionId: transaction?.id 
+        });
+      }
+      
+      throw error;
+    }
+  }
+
+  /**
+   * Create an audit log for a withdrawal
+   * @param transactionId The transaction ID
+   * @param withdrawalId The withdrawal ID from Binance
+   * @param asset The asset being withdrawn
+   * @param amount The amount being withdrawn
+   * @param address The destination address
    */
   private async createWithdrawalAuditLog(
     transactionId: string,
