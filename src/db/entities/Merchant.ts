@@ -43,6 +43,11 @@ export class Merchant {
   @IsOptional()
   website: string;
 
+  @Column({ nullable: true })
+  @IsUrl({}, { message: 'Logo URL must be a valid URL' })
+  @IsOptional()
+  logoUrl: string;
+
   @Column({
     type: 'enum',
     enum: MerchantStatus,

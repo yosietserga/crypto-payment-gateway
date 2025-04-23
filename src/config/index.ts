@@ -183,7 +183,18 @@ export const config: Config = {
   },
   
   queue: {
-    url: process.env.RABBITMQ_URL || 'amqp://localhost',
+    url: (() => {
+      // Construct the URL from individual parts if available
+      if (process.env.RABBITMQ_USERNAME && process.env.RABBITMQ_PASSWORD) {
+        const baseUrl = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
+        // If the URL already contains credentials, remove them
+        const urlWithoutAuth = baseUrl.replace(/amqp:\/\/[^@]+@/, 'amqp://');
+        // Insert auth credentials
+        return urlWithoutAuth.replace('amqp://', `amqp://${process.env.RABBITMQ_USERNAME}:${process.env.RABBITMQ_PASSWORD}@`);
+      }
+      // Fall back to the original URL
+      return process.env.RABBITMQ_URL || 'amqp://localhost';
+    })(),
     retryAttempts: parseInt(process.env.QUEUE_RETRY_ATTEMPTS || '5', 10),
     retryDelay: parseInt(process.env.QUEUE_RETRY_DELAY || '5000', 10), // 5 seconds
     useBackoff: process.env.QUEUE_USE_BACKOFF === 'false' ? false : true,

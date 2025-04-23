@@ -14,6 +14,8 @@ import addressRoutes from './api/routes/address.routes';
 import transactionRoutes from './api/routes/transaction.routes';
 import webhookRoutes from './api/routes/webhook.routes';
 import adminRoutes from './api/routes/admin.routes';
+import merchantRoutes from './api/routes/merchant.routes';
+import paymentWebappRoutes from './api/routes/payment-webapp.routes';
 
 // Initialize express app
 const app: Application = express();
@@ -46,6 +48,11 @@ app.use('/api/v1/addresses', addressRoutes);
 app.use('/api/v1/transactions', transactionRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
 app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/merchant', merchantRoutes);
+app.use('/api/v1/payment-webapp', paymentWebappRoutes);
+
+// Serve static files for payment webapp
+app.use('/payment-webapp', express.static('public/payment-webapp'));
 
 // 404 handler
 app.use((req: Request, res: Response) => {
