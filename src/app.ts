@@ -69,6 +69,19 @@ app.listen(PORT, '0.0.0.0', async () => {
   
   // Initialize services
   try {
+    // Import database connection
+    const { initializeDatabase } = await import('./db/connection');
+    
+    // Initialize database connection
+    try {
+      await initializeDatabase();
+      logger.info('Database connection established successfully');
+    } catch (dbError) {
+      const errorMessage = dbError instanceof Error ? dbError.message : 'Unknown error';
+      logger.error(`Failed to initialize database connection: ${errorMessage}`);
+      logger.warn('Application will continue with limited functionality');
+    }
+    
     // Import services
     const { QueueService } = await import('./services/queueService');
     const { WebhookService } = await import('./services/webhookService');

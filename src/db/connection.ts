@@ -59,10 +59,27 @@ export const initializeDatabase = async (): Promise<Connection> => {
 let connection: Connection | null = null;
 
 export const getConnection = async (): Promise<Connection> => {
-  if (!connection) {
+  try {
+    // Check if there's a connection in TypeORM's connection manager
+    const connectionManager = require('typeorm').getConnectionManager();
+    
+    // If connection exists and is active, return it
+    if (connectionManager.has('default') && connectionManager.get('default').isConnected) {
+      return connectionManager.get('default');
+    }
+    
+    // Otherwise try our singleton
+    if (connection && connection.isConnected) {
+      return connection;
+    }
+    
+    // Initialize a new connection if none exists
     connection = await initializeDatabase();
+    return connection;
+  } catch (error) {
+    logger.error('Error getting database connection:', error);
+    throw error;
   }
-  return connection;
 };
 
 // Circuit breaker pattern for database operations
