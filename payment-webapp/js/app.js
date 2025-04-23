@@ -5,12 +5,16 @@
 
 // Configuration
 const config = {
-    apiBaseUrl: 'https://api.cryptopaymentgateway.com',
+    apiBaseUrl: '/api/v1', // Use relative URL for same-domain calls
+    absoluteApiBaseUrl: 'https://eoscryptopago.com/api/v1', // Full URL for cross-domain calls
+    apiKey: 'YOUR_API_KEY', // This should be replaced with your actual API key
+    apiSecret: 'YOUR_API_SECRET', // This should be replaced with your actual API secret
     defaultExpiryMinutes: 15,
     refreshInterval: 5000, // 5 seconds
     validateAddressRegex: /^0x[a-fA-F0-9]{40}$/, // Basic Ethereum/BSC address validation
     minAmount: 0.01,
-    maxAmount: 10000
+    maxAmount: 10000,
+    domain: 'eoscryptopago.com'
 };
 
 // App state
@@ -281,6 +285,21 @@ function validateBscAddress(address) {
     return { valid: true };
 }
 
+// Generate HMAC signature for API requests
+function generateSignature(timestamp, body) {
+    // This would normally be done server-side to protect your API secret
+    // For demo purposes, we're doing it client-side, but in production
+    // you should have your server generate the signature
+    const message = timestamp + (body ? JSON.stringify(body) : '');
+    
+    // This is a placeholder for actual HMAC signature generation
+    // Real implementation would use crypto.createHmac in Node.js or similar in other environments
+    console.log('Would generate signature for:', message);
+    
+    // Return dummy signature for demo purposes
+    return 'demo_signature';
+}
+
 /**
  * Payment Functions
  */
@@ -302,31 +321,54 @@ function generatePaymentAddress() {
     elements.generatePaymentBtn.disabled = true;
     elements.generatePaymentBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
     
-    // Normally, we would call an API here
-    // For this demo, we'll simulate the API call
-    setTimeout(() => {
-        // Simulate successful response
-        const response = {
-            success: true,
-            data: {
-                address: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F',
-                amount: parseFloat(amount),
-                expiresAt: new Date(Date.now() + config.defaultExpiryMinutes * 60 * 1000).toISOString()
-            }
-        };
-        
+    // Prepare request body
+    const requestBody = {
+        currency: 'USDT',
+        expectedAmount: amount,
+        expiresAt: new Date(Date.now() + config.defaultExpiryMinutes * 60 * 1000).toISOString(),
+        callbackUrl: callbackUrl || undefined,
+        metadata: {
+            webhookUrl: webhookUrl || undefined,
+            clientGeneratedAt: new Date().toISOString()
+        }
+    };
+    
+    // Generate timestamp for request
+    const timestamp = Date.now().toString();
+    
+    // Make API request to generate payment address
+    fetch(`${config.apiBaseUrl}/merchant/payment-addresses`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-API-KEY': config.apiKey,
+            'X-TIMESTAMP': timestamp,
+            'X-SIGNATURE': generateSignature(timestamp, requestBody)
+        },
+        body: JSON.stringify(requestBody)
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(errorData => {
+                throw new Error(errorData.error?.message || 'Failed to generate payment address');
+            });
+        }
+        return response.json();
+    })
+    .then(response => {
         if (response.success) {
             // Store data in state
             state.paymentAddress = response.data.address;
-            state.paymentAmount = response.data.amount;
+            state.paymentAmount = parseFloat(response.data.expectedAmount);
+            state.paymentAddressId = response.data.id;
             
             // Update UI
             elements.paymentAddress.textContent = response.data.address;
-            elements.displayAmount.textContent = response.data.amount.toFixed(2);
-            elements.detailAmount.textContent = `${response.data.amount.toFixed(2)} USDT`;
+            elements.displayAmount.textContent = parseFloat(response.data.expectedAmount).toFixed(2);
+            elements.detailAmount.textContent = `${parseFloat(response.data.expectedAmount).toFixed(2)} USDT`;
             
             // Generate QR code
-            generateQRCode(response.data.address, response.data.amount);
+            generateQRCode(response.data.address, response.data.expectedAmount);
             
             // Show payment screen
             showScreen('paymentScreen', 'payment');
@@ -346,11 +388,17 @@ function generatePaymentAddress() {
             elements.errorMessage.textContent = response.message || 'Failed to generate payment address';
             showScreen('errorScreen', 'payment');
         }
-        
+    })
+    .catch(error => {
+        console.error('Payment address generation error:', error);
+        elements.errorMessage.textContent = error.message || 'Failed to connect to payment server';
+        showScreen('errorScreen', 'payment');
+    })
+    .finally(() => {
         // Reset button state
         elements.generatePaymentBtn.disabled = false;
         elements.generatePaymentBtn.innerHTML = '<i class="bi bi-qr-code"></i> Generate Payment Address';
-    }, 1500);
+    });
 }
 
 // Generate QR code
@@ -422,43 +470,91 @@ function pollPaymentStatus() {
     elements.paymentStatus.innerHTML = '<p><i class="bi bi-hourglass-split"></i> Waiting for payment to be detected...</p>';
     
     // Start polling
-    let pollCount = 0;
     state.activePoll = setInterval(() => {
-        pollCount++;
-        
-        // Normally, we would call an API here to check payment status
-        // For this demo, we'll simulate the API call and responses
-        
-        // Simulate detecting payment after a few polls
-        if (pollCount === 3) {
-            // Update to detecting payment
-            elements.paymentStatus.className = 'payment-status status-confirming';
-            elements.paymentStatus.innerHTML = '<p><i class="bi bi-arrow-repeat spin"></i> Payment detected, waiting for confirmation...</p>';
-            
-            // Update steps
-            elements.step2.classList.remove('active');
-            elements.step2.classList.add('completed');
-            elements.step3.classList.add('active');
+        if (!state.paymentAddressId) {
+            console.error('No payment address ID available for status check');
+            return;
         }
         
-        // Simulate confirmed payment after more polls
-        if (pollCount === 6) {
-            // Stop polling and timer
-            clearInterval(state.activePoll);
-            clearInterval(state.paymentTimerInterval);
+        // Generate timestamp for request
+        const timestamp = Date.now().toString();
+        
+        // Check payment address status
+        fetch(`${config.apiBaseUrl}/merchant/payment-addresses/${state.paymentAddressId}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-KEY': config.apiKey,
+                'X-TIMESTAMP': timestamp,
+                'X-SIGNATURE': generateSignature(timestamp)
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errorData => {
+                    throw new Error(errorData.error?.message || 'Failed to check payment status');
+                });
+            }
+            return response.json();
+        })
+        .then(response => {
+            if (!response.success) {
+                throw new Error(response.error?.message || 'Failed to check payment status');
+            }
             
-            // Set confirmed status
-            state.paymentStatus = 'confirmed';
-            state.txHash = '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
-            
-            // Update confirmation details
-            elements.confirmedAmount.textContent = `${state.paymentAmount.toFixed(2)} USDT`;
-            elements.confirmedTxId.textContent = state.txHash;
-            elements.confirmedStatus.textContent = 'Confirmed';
-            
-            // Show confirmation screen
-            showScreen('confirmationScreen', 'payment');
-        }
+            // Check for associated transactions
+            if (response.data.transactions && response.data.transactions.length > 0) {
+                const latestTransaction = response.data.transactions[0];
+                
+                if (latestTransaction.status === 'CONFIRMING') {
+                    // Payment detected, waiting for confirmations
+                    elements.paymentStatus.className = 'payment-status status-confirming';
+                    elements.paymentStatus.innerHTML = '<p><i class="bi bi-arrow-repeat spin"></i> Payment detected, waiting for confirmation...</p>';
+                    
+                    // Update steps
+                    elements.step2.classList.remove('active');
+                    elements.step2.classList.add('completed');
+                    elements.step3.classList.add('active');
+                } else if (latestTransaction.status === 'CONFIRMED' || latestTransaction.status === 'COMPLETED') {
+                    // Payment confirmed
+                    clearInterval(state.activePoll);
+                    clearInterval(state.paymentTimerInterval);
+                    
+                    // Set confirmed status
+                    state.paymentStatus = 'confirmed';
+                    state.txHash = latestTransaction.txHash;
+                    
+                    // Update confirmation details
+                    elements.confirmedAmount.textContent = `${parseFloat(latestTransaction.amount).toFixed(2)} USDT`;
+                    elements.confirmedTxId.textContent = latestTransaction.txHash || latestTransaction.id;
+                    elements.confirmedStatus.textContent = 'Confirmed';
+                    
+                    // Show confirmation screen
+                    showScreen('confirmationScreen', 'payment');
+                } else if (latestTransaction.status === 'FAILED') {
+                    // Payment failed
+                    clearInterval(state.activePoll);
+                    clearInterval(state.paymentTimerInterval);
+                    
+                    // Set error status
+                    state.paymentStatus = 'error';
+                    elements.errorMessage.textContent = 'Payment failed: ' + (latestTransaction.failureReason || 'Unknown error');
+                    showScreen('errorScreen', 'payment');
+                }
+            } else if (response.data.status === 'EXPIRED') {
+                // Address expired
+                clearInterval(state.activePoll);
+                clearInterval(state.paymentTimerInterval);
+                
+                elements.paymentStatus.className = 'payment-status status-error';
+                elements.paymentStatus.innerHTML = '<p><i class="bi bi-exclamation-triangle"></i> Payment time expired. Please try again.</p>';
+                state.paymentStatus = 'expired';
+            }
+        })
+        .catch(error => {
+            console.error('Error checking payment status:', error);
+            // Don't stop polling on temporary errors
+        });
     }, config.refreshInterval);
 }
 
@@ -499,29 +595,53 @@ function createPayout() {
     payoutElements.createPayoutBtn.disabled = true;
     payoutElements.createPayoutBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
     
-    // Normally, we would call an API here
-    // For this demo, we'll simulate the API call
-    setTimeout(() => {
-        // Simulate successful response
-        const response = {
-            success: true,
-            data: {
-                id: 'payout_' + Date.now(),
-                amount: parseFloat(amount),
-                recipient: recipient,
-                status: 'processing'
-            }
-        };
-        
+    // Prepare request body
+    const requestBody = {
+        amount: amount,
+        currency: 'USDT',
+        network: 'BSC',
+        recipientAddress: recipient,
+        webhookUrl: webhookUrl || undefined,
+        metadata: {
+            description: description || undefined,
+            callbackUrl: callbackUrl || undefined,
+            clientGeneratedAt: new Date().toISOString()
+        }
+    };
+    
+    // Generate timestamp for request
+    const timestamp = Date.now().toString();
+    
+    // Make API request to create payout
+    fetch(`${config.apiBaseUrl}/merchant/payouts`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-API-KEY': config.apiKey,
+            'X-TIMESTAMP': timestamp,
+            'X-SIGNATURE': generateSignature(timestamp, requestBody)
+        },
+        body: JSON.stringify(requestBody)
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.json().then(errorData => {
+                throw new Error(errorData.error?.message || 'Failed to create payout');
+            });
+        }
+        return response.json();
+    })
+    .then(response => {
         if (response.success) {
-            // Store data in state
-            state.payoutAmount = response.data.amount;
-            state.payoutRecipient = response.data.recipient;
+            // Store payout data
+            state.payoutId = response.data.id;
+            state.payoutAmount = parseFloat(response.data.amount);
+            state.payoutRecipient = response.data.recipientAddress;
             
             // Update UI
-            payoutElements.processingAmount.textContent = `${response.data.amount.toFixed(2)} USDT`;
-            payoutElements.processingRecipient.textContent = response.data.recipient;
-            payoutElements.processingTxId.textContent = 'Pending...';
+            payoutElements.processingAmount.textContent = `${parseFloat(response.data.amount).toFixed(2)} USDT`;
+            payoutElements.processingRecipient.textContent = response.data.recipientAddress;
+            payoutElements.processingTxId.textContent = response.data.id;
             
             // Show processing screen
             showScreen('payoutProcessingScreen', 'payout');
@@ -531,18 +651,24 @@ function createPayout() {
             payoutElements.payoutStep1.classList.add('completed');
             payoutElements.payoutStep2.classList.add('active');
             
-            // Poll for payout status
+            // Start polling for payout status
             pollPayoutStatus();
         } else {
             // Show error
             payoutElements.payoutErrorMessage.textContent = response.message || 'Failed to create payout';
             showScreen('payoutErrorScreen', 'payout');
         }
-        
+    })
+    .catch(error => {
+        console.error('Payout creation error:', error);
+        payoutElements.payoutErrorMessage.textContent = error.message || 'Failed to connect to payment server';
+        showScreen('payoutErrorScreen', 'payout');
+    })
+    .finally(() => {
         // Reset button state
         payoutElements.createPayoutBtn.disabled = false;
         payoutElements.createPayoutBtn.innerHTML = '<i class="bi bi-send"></i> Create Payout';
-    }, 1500);
+    });
 }
 
 // Poll for payout status
@@ -556,35 +682,82 @@ function pollPayoutStatus() {
     state.payoutStatus = 'processing';
     
     // Start polling
-    let pollCount = 0;
     state.activePoll = setInterval(() => {
-        pollCount++;
-        
-        // Normally, we would call an API here to check payout status
-        // For this demo, we'll simulate the API call and responses
-        
-        // Simulate completed payout after a few polls
-        if (pollCount === 5) {
-            // Stop polling
-            clearInterval(state.activePoll);
-            
-            // Set completed status
-            state.payoutStatus = 'completed';
-            state.payoutTxHash = '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
-            
-            // Update completion details
-            payoutElements.completedAmount.textContent = `${state.payoutAmount.toFixed(2)} USDT`;
-            payoutElements.completedRecipient.textContent = state.payoutRecipient;
-            payoutElements.completedTxId.textContent = state.payoutTxHash;
-            
-            // Update steps
-            payoutElements.payoutStep2.classList.remove('active');
-            payoutElements.payoutStep2.classList.add('completed');
-            payoutElements.payoutStep3.classList.add('active');
-            
-            // Show completed screen
-            showScreen('payoutCompletedScreen', 'payout');
+        if (!state.payoutId) {
+            console.error('No payout ID available for status check');
+            return;
         }
+        
+        // Generate timestamp for request
+        const timestamp = Date.now().toString();
+        
+        // Check payout status
+        fetch(`${config.apiBaseUrl}/merchant/payouts/${state.payoutId}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-KEY': config.apiKey,
+                'X-TIMESTAMP': timestamp,
+                'X-SIGNATURE': generateSignature(timestamp)
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errorData => {
+                    throw new Error(errorData.error?.message || 'Failed to check payout status');
+                });
+            }
+            return response.json();
+        })
+        .then(response => {
+            if (!response.success) {
+                throw new Error(response.error?.message || 'Failed to check payout status');
+            }
+            
+            // Update transaction ID if available
+            if (response.data.txHash) {
+                payoutElements.processingTxId.textContent = response.data.txHash;
+                state.payoutTxHash = response.data.txHash;
+            }
+            
+            // Check status
+            if (response.data.status === 'COMPLETED') {
+                // Payout completed successfully
+                clearInterval(state.activePoll);
+                
+                // Set completed status
+                state.payoutStatus = 'completed';
+                
+                // Update completion details
+                payoutElements.completedAmount.textContent = `${parseFloat(response.data.amount).toFixed(2)} USDT`;
+                payoutElements.completedRecipient.textContent = response.data.recipientAddress;
+                payoutElements.completedTxId.textContent = response.data.txHash || response.data.id;
+                
+                // Update steps
+                payoutElements.payoutStep2.classList.remove('active');
+                payoutElements.payoutStep2.classList.add('completed');
+                payoutElements.payoutStep3.classList.add('active');
+                
+                // Show completed screen
+                showScreen('payoutCompletedScreen', 'payout');
+            } else if (response.data.status === 'FAILED') {
+                // Payout failed
+                clearInterval(state.activePoll);
+                
+                // Set error status
+                state.payoutStatus = 'error';
+                
+                // Show error screen
+                payoutElements.payoutErrorMessage.textContent = 
+                    response.data.failureReason || 'Payout failed. Please try again.';
+                showScreen('payoutErrorScreen', 'payout');
+            }
+            // For other statuses (processing, pending), continue polling
+        })
+        .catch(error => {
+            console.error('Error checking payout status:', error);
+            // Don't stop polling on temporary errors
+        });
     }, config.refreshInterval);
 }
 

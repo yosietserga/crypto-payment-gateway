@@ -21,7 +21,7 @@ const logFormat = winston.format.combine(
 export const logger = winston.createLogger({
   level: config.logging.level,
   format: logFormat,
-  defaultMeta: { service: 'crypto-payment-gateway' },
+  defaultMeta: { service: 'eoscryptopago' },
   transports: [
     // Write logs with level 'error' and below to error.log
     new winston.transports.File({ 

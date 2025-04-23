@@ -15,6 +15,19 @@ enum ExtendedTransactionStatus {
 }
 
 /**
+ * Interface for payout parameters
+ */
+interface PayoutParams {
+  merchantId: string;
+  amount: number;
+  currency: string;
+  network: string;
+  recipientAddress: string;
+  webhookUrl?: string;
+  metadata?: Record<string, any>;
+}
+
+/**
  * Service for interacting with Binance exchange API
  */
 export class BinanceService {
@@ -584,6 +597,53 @@ export class BinanceService {
       await auditLogRepository.save(auditLog);
     } catch (error) {
       logger.error(`Failed to create API error audit log`, { error });
+    }
+  }
+
+  /**
+   * Create a new payout transaction and process it
+   * @param params Payout parameters
+   * @returns Created transaction
+   */
+  async createPayout(params: PayoutParams): Promise<Transaction> {
+    try {
+      const { merchantId, amount, currency, network, recipientAddress, webhookUrl, metadata } = params;
+      
+      logger.info(`Creating payout transaction`, {
+        merchantId,
+        amount,
+        currency,
+        network,
+        addressPartial: recipientAddress.substring(0, 8) + '...' + recipientAddress.substring(recipientAddress.length - 6)
+      });
+      
+      // Create transaction record
+      const connection = await getConnection();
+      const transactionRepository = connection.getRepository(Transaction);
+      
+      const transaction = new Transaction();
+      transaction.merchantId = merchantId;
+      transaction.type = TransactionType.PAYOUT;
+      transaction.status = TransactionStatus.PENDING;
+      transaction.currency = currency;
+      transaction.amount = amount;
+      transaction.recipientAddress = recipientAddress;
+      transaction.network = network;
+      transaction.metadata = {
+        ...(metadata || {}),
+        webhookUrl
+      };
+      
+      // Save transaction first to get an ID
+      const savedTransaction = await transactionRepository.save(transaction);
+      
+      // Process the withdrawal
+      await this.processWithdrawal(savedTransaction);
+      
+      return savedTransaction;
+    } catch (error) {
+      logger.error('Failed to create payout', { error, params });
+      throw error;
     }
   }
 } 

@@ -8,7 +8,7 @@
 // Configuration
 const CONFIG = {
     // API configuration
-    apiBaseUrl: 'http://localhost:3000/api/v1',  // Replace with actual API URL in production
+    apiBaseUrl: window.location.hostname === 'localhost' ? 'http://localhost:3000/api/v1' : 'https://eoscryptopago.com/api/v1',
     
     // Default payment settings
     defaultCurrency: 'USDT',
@@ -16,9 +16,9 @@ const CONFIG = {
     defaultExpiryMinutes: 15,
     
     // UI configuration
-    logoUrl: 'https://via.placeholder.com/80',  // Replace with actual logo
-    supportEmail: 'support@example.com',
-    supportUrl: '#',
+    logoUrl: 'https://eoscryptopago.com/logo.png',  // Replace with actual logo path
+    supportEmail: 'support@eoscryptopago.com',
+    supportUrl: 'https://eoscryptopago.com/support',
     
     // Feature flags
     enableQrScanner: true,

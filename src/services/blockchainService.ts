@@ -1229,10 +1229,10 @@ export class BlockchainService {
           newState: error ? {
             message: error.message,
             stack: error.stack,
-            service: 'crypto-payment-gateway',
+            service: 'eoscryptopago',
             timestamp: new Date().toISOString()
           } : {
-            service: 'crypto-payment-gateway',
+            service: 'eoscryptopago',
             timestamp: new Date().toISOString()
           }
         });

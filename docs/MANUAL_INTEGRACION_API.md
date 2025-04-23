@@ -48,7 +48,7 @@ Antes de comenzar la integración, asegúrate de contar con:
 
 Para comenzar, debes registrarte como comerciante en nuestra plataforma:
 
-1. Visita [https://crypto-payment-gateway.com/register](https://crypto-payment-gateway.com/register)
+1. Visita [https://eoscryptopago.com/register](https://eoscryptopago.com/register)
 2. Completa el formulario de registro con la información de tu negocio
 3. Verifica tu correo electrónico
 4. Completa el proceso de verificación KYC/KYB (Know Your Customer/Business)
@@ -158,8 +158,8 @@ Crea una nueva orden de pago para que un cliente pueda realizar un pago en cript
     "crypto_amount": 100.25,
     "crypto_currency": "USDT",
     "payment_address": "0x1234567890abcdef1234567890abcdef12345678",
-    "qr_code_url": "https://api.crypto-payment-gateway.com/qr/PO-987654321",
-    "payment_url": "https://pay.crypto-payment-gateway.com/PO-987654321",
+    "qr_code_url": "https://api.eoscryptopago.com/qr/PO-987654321",
+    "payment_url": "https://pay.eoscryptopago.com/PO-987654321",
     "expiration_time": "2023-06-01T15:30:00Z"
   }
 }
@@ -355,7 +355,7 @@ Antes de implementar en producción, te recomendamos utilizar nuestro entorno de
 
 ### Diferencias del Entorno Sandbox
 
-- URL Base: `https://sandbox-api.crypto-payment-gateway.com`
+- URL Base: `https://sandbox-api.eoscryptopago.com`
 - No se realizan transacciones reales en blockchain
 - Se proporcionan wallets de prueba con fondos virtuales
 - Los pagos pueden simularse manualmente
@@ -390,8 +390,8 @@ class CryptoPaymentGateway {
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
     this.baseUrl = sandbox 
-      ? 'https://sandbox-api.crypto-payment-gateway.com' 
-      : 'https://api.crypto-payment-gateway.com';
+      ? 'https://sandbox-api.eoscryptopago.com' 
+      : 'https://api.eoscryptopago.com';
   }
   
   async createPaymentOrder(orderData) {
@@ -510,8 +510,8 @@ class CryptoPaymentGateway {
     $this->apiKey = $apiKey;
     $this->apiSecret = $apiSecret;
     $this->baseUrl = $sandbox 
-      ? 'https://sandbox-api.crypto-payment-gateway.com' 
-      : 'https://api.crypto-payment-gateway.com';
+      ? 'https://sandbox-api.eoscryptopago.com' 
+      : 'https://api.eoscryptopago.com';
   }
   
   public function createPaymentOrder($orderData) {
@@ -735,15 +735,15 @@ Si encuentras problemas durante la integración o tienes preguntas adicionales, 
 
 ### Canales de Soporte
 
-- **Centro de Ayuda**: [https://ayuda.crypto-payment-gateway.com](https://ayuda.crypto-payment-gateway.com)
-- **Email de Soporte**: soporte@crypto-payment-gateway.com
+- **Centro de Ayuda**: [https://ayuda.eoscryptopago.com](https://ayuda.eoscryptopago.com)
+- **Email de Soporte**: soporte@eoscryptopago.com
 - **Chat en Vivo**: Disponible en el panel de control de 9:00 a 18:00 (GMT-6), de lunes a viernes
-- **Documentación API**: [https://docs.crypto-payment-gateway.com](https://docs.crypto-payment-gateway.com)
+- **Documentación API**: [https://docs.eoscryptopago.com](https://docs.eoscryptopago.com)
 
 ### Proceso de Soporte
 
 1. **Consulta la documentación**: Muchas preguntas comunes están respondidas en nuestra documentación.
-2. **Verifica el estado del servicio**: Antes de reportar un problema, verifica el estado actual del servicio en [https://status.crypto-payment-gateway.com](https://status.crypto-payment-gateway.com).
+2. **Verifica el estado del servicio**: Antes de reportar un problema, verifica el estado actual del servicio en [https://status.eoscryptopago.com](https://status.eoscryptopago.com).
 3. **Reporta un problema**: Si necesitas asistencia, proporciona la siguiente información:
    - Tu ID de comerciante
    - Descripción detallada del problema

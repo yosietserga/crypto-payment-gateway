@@ -461,4 +461,134 @@ router.get(
   })
 );
 
+/**
+ * @route POST /api/v1/merchant/payouts
+ * @desc Create a new payout
+ * @access Private (Merchant)
+ */
+router.post(
+  '/payouts',
+  merchantAuthMiddleware,
+  idempotencyMiddleware,
+  [
+    body('amount').isNumeric(),
+    body('currency').isString().isIn(['USDT']),
+    body('network').isString().isIn(['BSC']),
+    body('recipientAddress').matches(/^0x[a-fA-F0-9]{40}$/),
+    body('webhookUrl').optional().isURL(),
+    body('metadata').optional().isObject()
+  ],
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return next(new ApiError(400, `Validation error: ${errors.array().map(err => `${(err as any).path || (err as any).param || 'field'} ${err.msg}`).join(', ')}`, true));
+    }
+
+    const merchantId = req.merchant?.id;
+    
+    if (!merchantId) {
+      return next(new ApiError(401, 'Merchant ID is required', true));
+    }
+    
+    const { amount, currency, network, recipientAddress, webhookUrl, metadata } = req.body;
+
+    try {
+      // Import services dynamically to avoid circular dependencies
+      const { QueueService } = await import('../../services/queueService');
+      const { BinanceService } = await import('../../services/binanceService');
+      
+      // Initialize services
+      const queueService = QueueService.getInstance();
+      const binanceService = new BinanceService();
+      
+      // Create payout
+      const payout = await binanceService.createPayout({
+        merchantId,
+        amount: parseFloat(amount),
+        currency,
+        network,
+        recipientAddress,
+        webhookUrl,
+        metadata
+      });
+
+      // Log the action
+      const connection = await getConnection();
+      const auditLogRepository = connection.getRepository(AuditLog);
+      
+      const auditLog = new AuditLog();
+      auditLog.action = AuditLogAction.CREATE;
+      auditLog.entityType = AuditLogEntityType.TRANSACTION;
+      auditLog.entityId = payout.id;
+      auditLog.description = `Payout created for ${amount} ${currency}`;
+      auditLog.previousState = null;
+      auditLog.newState = { amount, currency, network, recipientAddress };
+      auditLog.userId = req.user?.id || null;
+      auditLog.merchantId = merchantId;
+      await auditLogRepository.save(auditLog);
+
+      res.status(201).json({
+        success: true,
+        data: payout
+      });
+    } catch (error) {
+      logger.error('Error creating payout', { error, merchantId });
+      next(new ApiError(500, 'Failed to create payout', true));
+    }
+  })
+);
+
+/**
+ * @route GET /api/v1/merchant/payouts/:payoutId
+ * @desc Get payout status
+ * @access Private (Merchant)
+ */
+router.get(
+  '/payouts/:payoutId',
+  merchantAuthMiddleware,
+  [
+    param('payoutId').isString()
+  ],
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return next(new ApiError(400, `Validation error: ${errors.array().map(err => `${(err as any).path || (err as any).param || 'field'} ${err.msg}`).join(', ')}`, true));
+    }
+
+    const merchantId = req.merchant?.id;
+    
+    if (!merchantId) {
+      return next(new ApiError(401, 'Merchant ID is required', true));
+    }
+    
+    const { payoutId } = req.params;
+
+    try {
+      const connection = await getConnection();
+      const transactionRepository = connection.getRepository(Transaction);
+      
+      // Find payout transaction
+      const payout = await transactionRepository.findOne({
+        where: {
+          id: payoutId,
+          merchantId,
+          type: TransactionType.PAYOUT
+        }
+      });
+      
+      if (!payout) {
+        return next(new ApiError(404, 'Payout not found', true));
+      }
+
+      res.status(200).json({
+        success: true,
+        data: payout
+      });
+    } catch (error) {
+      logger.error('Error fetching payout', { error, merchantId, payoutId });
+      next(new ApiError(500, 'Failed to fetch payout', true));
+    }
+  })
+);
+
 export default router;
