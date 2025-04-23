@@ -310,7 +310,15 @@ export class QueueService {
     
     // Declare queues with dead letter exchange for retries
     try {
-      await this.channel.assertExchange('dlx', 'direct', { durable: true });
+      // First check if exchange exists using a passive check
+      try {
+        await this.channel.checkExchange('dlx');
+        logger.info('Exchange dlx already exists, skipping declaration');
+      } catch (checkError) {
+        // Only create the exchange if it doesn't exist
+        await this.channel.assertExchange('dlx', 'direct', { durable: true });
+        logger.info('Exchange dlx declared successfully');
+      }
     } catch (error) {
       logger.warn('Failed to declare dead letter exchange, some retry functionality may be limited', { error });
       // Continue anyway - this is not fatal
@@ -329,11 +337,11 @@ export class QueueService {
     // Declare each queue, handling errors individually
     for (const queue of queues) {
       try {
-        // Check if queue exists first
+        // Check if queue exists first using passive check
         await this.channel.checkQueue(queue);
         logger.info(`Queue ${queue} already exists, skipping declaration`);
-      } catch (error) {
-        // Queue doesn't exist or check failed, try to declare it
+      } catch (checkError) {
+        // Queue doesn't exist, try to create it with configured arguments
         try {
           await this.channel.assertQueue(queue, this.getQueueConfig(queue));
           logger.info(`Queue ${queue} declared successfully`);
@@ -364,7 +372,16 @@ export class QueueService {
     
     for (const binding of retryBindings) {
       try {
-        await this.channel.bindQueue(binding.queue, 'dlx', binding.key);
+        // First check if the queue exists
+        try {
+          await this.channel.checkQueue(binding.queue);
+          
+          // Try the binding - it's idempotent so it's safe to call multiple times
+          await this.channel.bindQueue(binding.queue, 'dlx', binding.key);
+          logger.debug(`Queue ${binding.queue} bound to dlx exchange with key ${binding.key}`);
+        } catch (checkError) {
+          logger.warn(`Queue ${binding.queue} does not exist, skipping binding`, { error: checkError });
+        }
       } catch (error) {
         logger.warn(`Failed to bind queue ${binding.queue} to dead letter exchange`, { error });
         // Continue with other bindings
@@ -389,19 +406,36 @@ export class QueueService {
     
     for (const consumer of retryConsumers) {
       try {
-        await this.channel.consume(consumer.source, (msg: amqp.ConsumeMessage | null) => {
-          if (msg) {
-            try {
-              this.channel!.sendToQueue(consumer.target, msg.content, {
-                headers: msg.properties.headers
-              });
-              this.channel!.ack(msg);
-            } catch (error) {
-              logger.error(`Error processing retry message from ${consumer.source} to ${consumer.target}`, { error });
-              this.channel!.nack(msg);
-            }
+        // First check if the source queue exists
+        try {
+          await this.channel.checkQueue(consumer.source);
+          
+          // Then check if the target queue exists
+          try {
+            await this.channel.checkQueue(consumer.target);
+            
+            // Both queues exist, set up the consumer
+            await this.channel.consume(consumer.source, (msg: amqp.ConsumeMessage | null) => {
+              if (msg) {
+                try {
+                  this.channel!.sendToQueue(consumer.target, msg.content, {
+                    headers: msg.properties.headers
+                  });
+                  this.channel!.ack(msg);
+                } catch (error) {
+                  logger.error(`Error processing retry message from ${consumer.source} to ${consumer.target}`, { error });
+                  this.channel!.nack(msg);
+                }
+              }
+            });
+            
+            logger.debug(`Retry consumer set up for ${consumer.source} -> ${consumer.target}`);
+          } catch (targetError) {
+            logger.warn(`Target queue ${consumer.target} does not exist, skipping consumer setup for ${consumer.source}`, { error: targetError });
           }
-        });
+        } catch (sourceError) {
+          logger.warn(`Source queue ${consumer.source} does not exist, skipping consumer setup`, { error: sourceError });
+        }
       } catch (error) {
         logger.warn(`Failed to set up retry consumer for ${consumer.source}`, { error });
         // Continue with other consumers
@@ -430,14 +464,29 @@ export class QueueService {
         await this.connect();
       }
       
-      // Ensure the queue exists without modifying its properties
+      // Check if queue exists using passive declaration
+      let queueExists = false;
       try {
         await this.channel.checkQueue(queue);
-      } catch (error) {
-        // Only create the queue if it doesn't exist
-        // Use predefined config if available, otherwise use default config
-        const queueConfig = this.getQueueConfig(queue);
-        await this.channel.assertQueue(queue, queueConfig);
+        queueExists = true;
+        logger.debug(`Queue ${queue} exists, proceeding with message publish`);
+      } catch (checkError) {
+        logger.debug(`Queue ${queue} does not exist or check failed, will try to create it`);
+        queueExists = false;
+      }
+      
+      // Only attempt to create the queue if it doesn't exist
+      if (!queueExists) {
+        try {
+          const queueConfig = this.getQueueConfig(queue);
+          await this.channel.assertQueue(queue, queueConfig);
+          logger.info(`Queue ${queue} created successfully for message publish`);
+        } catch (createError) {
+          // If create fails and it's not because the queue already exists with different params,
+          // throw the error to be caught by the outer try/catch
+          logger.error(`Failed to create queue ${queue} for message publish`, { error: createError });
+          throw createError;
+        }
       }
       
       // Add message to queue with options
@@ -531,14 +580,28 @@ export class QueueService {
         await this.connect();
       }
       
-      // Ensure the queue exists without modifying its properties
+      // Check if queue exists using passive declaration
+      let queueExists = false;
       try {
         await this.channel.checkQueue(queue);
-      } catch (error) {
-        // Only create the queue if it doesn't exist
-        // Use predefined config if available, otherwise use default config
-        const queueConfig = this.getQueueConfig(queue);
-        await this.channel.assertQueue(queue, queueConfig);
+        queueExists = true;
+        logger.debug(`Queue ${queue} exists, proceeding with consumer setup`);
+      } catch (checkError) {
+        logger.debug(`Queue ${queue} does not exist or check failed, will try to create it`);
+        queueExists = false;
+      }
+      
+      // Only attempt to create the queue if it doesn't exist
+      if (!queueExists) {
+        try {
+          const queueConfig = this.getQueueConfig(queue);
+          await this.channel.assertQueue(queue, queueConfig);
+          logger.info(`Queue ${queue} created successfully for consumer setup`);
+        } catch (createError) {
+          // If create fails and it's not because the queue already exists with different params,
+          // log the error but continue to try consuming in case the queue exists now
+          logger.error(`Failed to create queue ${queue} for consumer setup`, { error: createError });
+        }
       }
       
       // Set prefetch count if specified
@@ -546,36 +609,42 @@ export class QueueService {
         await this.channel.prefetch(options.prefetch);
       }
       
-      // Consume messages
-      await this.channel.consume(queue, async (msg: amqp.ConsumeMessage | null) => { 
-        if (!msg) return;
-        
-        try {
-          const content = msg.content.toString();
-          const data = JSON.parse(content);
-          
-          // Process the message
-          await callback(data);
-          
-          // Acknowledge the message
-          this.channel.ack(msg);
-          
-          logger.debug(`Processed message from queue ${queue}`, { queue, data });
-        } catch (error: unknown) {
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          logger.error(`Error processing message from queue ${queue}: ${errorMessage}`, { error, queue });
-          
-          // Reject the message and requeue it
-          this.channel.nack(msg, false, true);
+      // Set up consumer
+      await this.channel.consume(queue, async (msg: amqp.ConsumeMessage | null) => {
+        if (msg) {
+          try {
+            const data = JSON.parse(msg.content.toString());
+            await callback(data);
+            this.channel!.ack(msg);
+          } catch (error) {
+            logger.error(`Error processing message from queue ${queue}`, { error, message: msg.content.toString() });
+            
+            // Don't requeue the message if it's already been retried too many times
+            // to avoid infinite retry loops
+            const headers = msg.properties.headers || {};
+            const retryCount = (headers['x-retry-count'] || 0) + 1;
+            const maxRetries = config.queue.maxRetries ?? 3; // Default to 3 if not set
+            
+            if (this.isRetriableError(error) && retryCount <= maxRetries) {
+              // Nack with requeue=true to retry
+              this.channel!.nack(msg, false, true);
+              logger.info(`Message requeued for retry (${retryCount}/${maxRetries})`, { queue });
+            } else {
+              // Nack without requeue to send to dead letter queue if configured,
+              // or discard if not
+              this.channel!.nack(msg, false, false);
+              logger.info(`Message rejected after ${retryCount} retries or non-retriable error`, { queue });
+            }
+          }
         }
       });
       
-      logger.info(`Started consuming queue ${queue}`);
+      logger.info(`Consumer registered for queue ${queue}`);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      logger.error(`Error consuming queue ${queue}: ${errorMessage}`, { error, queue });
+      logger.error(`Error setting up consumer for queue ${queue}: ${errorMessage}`, { error, queue });
       
-      // Enter fallback mode instead of throwing error
+      // Enter fallback mode if we encounter an error
       this.enterFallbackMode();
       
       // Schedule reconnection attempts
