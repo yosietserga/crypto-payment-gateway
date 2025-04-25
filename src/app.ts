@@ -42,6 +42,17 @@ app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Homepage route
+app.get('/', (req: Request, res: Response) => {
+  res.status(200).json({
+    name: 'Crypto Payment Gateway API',
+    version: '1.0.0',
+    documentation: '/api/docs',
+    status: 'online',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // API routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/addresses', addressRoutes);
