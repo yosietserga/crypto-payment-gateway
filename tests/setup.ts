@@ -69,11 +69,11 @@ jest.mock('../src/db/entities/Webhook', () => {
     @Column({ nullable: true })
     lastFailureReason?: string;
   
-    @Column({ nullable: true })
-    lastSuccessAt?: Date;
+    @Column({ nullable: true, type: 'varchar' })
+    lastSuccessAt?: string;
   
-    @Column({ nullable: true })
-    lastAttemptAt?: Date;
+    @Column({ nullable: true, type: 'varchar' })
+    lastAttemptAt?: string;
   
     @Column({ default: 3 })
     maxRetries: number = 3;
@@ -88,10 +88,10 @@ jest.mock('../src/db/entities/Webhook', () => {
     merchantId: string = '';
   
     @CreateDateColumn()
-    createdAt: Date = new Date();
+    createdAt: string = new Date().toISOString();
   
     @UpdateDateColumn()
-    updatedAt: Date = new Date();
+    updatedAt: string = new Date().toISOString();
   
     shouldRetry(): boolean {
       return this.failedAttempts < this.maxRetries;
@@ -100,7 +100,7 @@ jest.mock('../src/db/entities/Webhook', () => {
     incrementFailedAttempts(reason: string): void {
       this.failedAttempts += 1;
       this.lastFailureReason = reason;
-      this.lastAttemptAt = new Date();
+      this.lastAttemptAt = new Date().toISOString();
       
       if (this.failedAttempts >= this.maxRetries) {
         this.status = MockWebhookStatus.FAILED;
@@ -110,15 +110,15 @@ jest.mock('../src/db/entities/Webhook', () => {
     resetFailedAttempts(): void {
       this.failedAttempts = 0;
       this.lastFailureReason = "";
-      this.lastSuccessAt = new Date();
-      this.lastAttemptAt = new Date();
+      this.lastSuccessAt = new Date().toISOString();
+      this.lastAttemptAt = new Date().toISOString();
       this.status = MockWebhookStatus.ACTIVE;
     }
   
-    getNextRetryTime(): Date {
+    getNextRetryTime(): string {
       const nextRetry = new Date(this.lastAttemptAt || new Date());
       nextRetry.setSeconds(nextRetry.getSeconds() + this.retryInterval * Math.pow(2, this.failedAttempts - 1));
-      return nextRetry;
+      return nextRetry.toISOString();
     }
   }
   
@@ -212,10 +212,10 @@ jest.mock('../src/db/entities/Merchant', () => {
     created_by_id: string = '';
     
     @CreateDateColumn()
-    createdAt: Date = new Date();
+    createdAt: string = new Date().toISOString();
     
     @UpdateDateColumn()
-    updatedAt: Date = new Date();
+    updatedAt: string = new Date().toISOString();
     
     // Helper method to check if merchant has reached daily transaction limit
     hasReachedDailyLimit(amount: number, currentDailyTotal: number): boolean {
@@ -290,14 +290,14 @@ jest.mock('../src/db/entities/User', () => {
     @Column({ default: false })
     isActive: boolean;
     
-    @Column({ nullable: true })
-    lastLoginAt?: Date;
+    @Column({ nullable: true, type: 'varchar' })
+    lastLoginAt?: string;
     
     @CreateDateColumn()
-    createdAt: Date;
+    createdAt: string = new Date().toISOString();
     
     @UpdateDateColumn()
-    updatedAt: Date;
+    updatedAt: string = new Date().toISOString();
     
     // No reference to AuditLog here to break the circular dependency
     
@@ -313,6 +313,77 @@ jest.mock('../src/db/entities/User', () => {
   return {
     User: MockUser,
     UserRole
+  };
+});
+
+// Mock the IdempotencyKey entity to avoid SQLite compatibility issues with Date fields
+jest.mock('../src/db/entities/IdempotencyKey', () => {
+  const { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index } = require('typeorm');
+  
+  @Entity('idempotency_keys')
+  class MockIdempotencyKey {
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
+
+    @Column()
+    @Index({ unique: true })
+    key: string;
+
+    @Column({ nullable: true })
+    merchantId: string;
+
+    @Column()
+    method: string;
+
+    @Column()
+    path: string;
+
+    @Column({ type: 'simple-json', nullable: true })
+    requestData: object;
+
+    @Column({ nullable: true })
+    response: string;
+
+    @Column({ nullable: true, default: 200 })
+    statusCode: number;
+
+    @Column({ nullable: true, type: 'varchar' })
+    completedAt: string;
+
+    @Column({ nullable: true, type: 'varchar' })
+    expiresAt: string;
+
+    @CreateDateColumn()
+    createdAt: string = new Date().toISOString();
+
+    // Check if key is expired
+    isExpired(): boolean {
+      if (!this.expiresAt) return false;
+      return new Date() > new Date(this.expiresAt);
+    }
+    
+    // Helper method to create a new key instance
+    static createInstance(key: string, method: string, path: string, expiresAt: string): MockIdempotencyKey {
+      const idempotencyKey = new MockIdempotencyKey();
+      idempotencyKey.key = key;
+      idempotencyKey.method = method;
+      idempotencyKey.path = path;
+      idempotencyKey.expiresAt = expiresAt;
+      return idempotencyKey;
+    }
+    
+    // Helper method to prepare update data for a response
+    static getResponseUpdateData(statusCode: number, response: string): Partial<MockIdempotencyKey> {
+      return {
+        statusCode,
+        response,
+        completedAt: new Date().toISOString()
+      };
+    }
+  }
+  
+  return {
+    IdempotencyKey: MockIdempotencyKey
   };
 });
 
@@ -399,7 +470,7 @@ jest.mock('../src/db/entities/AuditLog', () => {
     
     @CreateDateColumn()
     @Index()
-    createdAt: Date = new Date();
+    createdAt: string = new Date().toISOString();
     
     static create(params: any) {
       const auditLog = new MockAuditLog();
@@ -444,11 +515,11 @@ jest.mock('../src/db/entities/ApiKey', () => {
     @Column({ type: 'varchar' })
     status: string = MockApiKeyStatus.ACTIVE;
     
-    @Column({ nullable: true, type: 'datetime' })
-    expiresAt: Date | null = null;
+    @Column({ nullable: true, type: 'varchar' })
+    expiresAt: string | null = null;
     
-    @Column({ nullable: true, type: 'datetime' })
-    lastUsedAt: Date | null = null;
+    @Column({ nullable: true, type: 'varchar' })
+    lastUsedAt: string | null = null;
     
     @Column({ default: 0 })
     usageCount: number = 0;
@@ -466,10 +537,10 @@ jest.mock('../src/db/entities/ApiKey', () => {
     merchantId: string = '';
     
     @CreateDateColumn()
-    createdAt: Date = new Date();
+    createdAt: string = new Date().toISOString();
     
     @UpdateDateColumn()
-    updatedAt: Date = new Date();
+    updatedAt: string = new Date().toISOString();
     
     // Generate a new API key and secret
     generateKeyAndSecret() {
@@ -488,7 +559,7 @@ jest.mock('../src/db/entities/ApiKey', () => {
     // Check if API key is expired
     isExpired(): boolean {
       if (!this.expiresAt) return false;
-      return new Date() > this.expiresAt;
+      return new Date() > new Date(this.expiresAt);
     }
     
     // Check if API key is valid
@@ -498,7 +569,7 @@ jest.mock('../src/db/entities/ApiKey', () => {
     
     // Update last used timestamp
     updateLastUsed(): void {
-      this.lastUsedAt = new Date();
+      this.lastUsedAt = new Date().toISOString();
       this.usageCount += 1;
     }
     
@@ -573,8 +644,8 @@ jest.mock('../src/db/entities/PaymentAddress', () => {
     @Column({ nullable: true })
     currency: string = '';
     
-    @Column({ nullable: true })
-    expiresAt: Date | null = null;
+    @Column({ type: 'varchar', nullable: true })
+    expiresAt: string | null = null;
     
     @Column({ default: false })
     isMonitored: boolean = false;
@@ -589,15 +660,15 @@ jest.mock('../src/db/entities/PaymentAddress', () => {
     merchantId: string = '';
     
     @CreateDateColumn()
-    createdAt: Date = new Date();
+    createdAt: string = new Date().toISOString();
     
     @UpdateDateColumn()
-    updatedAt: Date = new Date();
+    updatedAt: string = new Date().toISOString();
     
     // Check if address is expired
     isExpired(): boolean {
       if (!this.expiresAt) return false;
-      return new Date() > this.expiresAt;
+      return new Date() > new Date(this.expiresAt);
     }
     
     // Mark address as expired
@@ -687,8 +758,8 @@ jest.mock('../src/db/entities/Transaction', () => {
     @Column({ nullable: true })
     blockHash?: string;
     
-    @Column({ nullable: true })
-    blockTimestamp?: Date;
+    @Column({ nullable: true, type: 'varchar' })
+    blockTimestamp?: string;
     
     @Column({ default: false })
     webhookSent: boolean = false;
@@ -713,10 +784,10 @@ jest.mock('../src/db/entities/Transaction', () => {
     paymentAddressId: string = '';
     
     @CreateDateColumn()
-    createdAt: Date = new Date();
+    createdAt: string = new Date().toISOString();
     
     @UpdateDateColumn()
-    updatedAt: Date = new Date();
+    updatedAt: string = new Date().toISOString();
     
     // Check if transaction is fully confirmed
     isFullyConfirmed(requiredConfirmations: number): boolean {
@@ -789,6 +860,10 @@ export const {
   WebhookStatus,
 } = jest.requireMock('../src/db/entities/Webhook');
 
+export const {
+  IdempotencyKey,
+} = jest.requireMock('../src/db/entities/IdempotencyKey');
+
 // Set up aliases for the mocked modules to avoid circular dependencies
 jest.mock('../src/db/entities/Transaction');
 jest.mock('../src/db/entities/PaymentAddress');
@@ -796,6 +871,7 @@ jest.mock('../src/db/entities/ApiKey');
 jest.mock('../src/db/entities/Merchant');
 jest.mock('../src/db/entities/User');
 jest.mock('../src/db/entities/AuditLog');
+jest.mock('../src/db/entities/IdempotencyKey');
 
 // Mock external services
 jest.mock('../src/services/blockchainService', () => ({
@@ -828,16 +904,66 @@ jest.mock('../src/services/webhookService', () => ({
 }));
 
 // Mock QueueService to prevent RabbitMQ connection errors
-jest.mock('../src/services/queueService', () => ({
-  QueueService: jest.fn().mockImplementation(() => ({
+jest.mock('../src/services/queueService', () => {
+  // Define the type for queue callbacks
+  type QueueCallback = (data: any) => Promise<any>;
+  type QueueCallbacks = { [queueName: string]: QueueCallback };
+  
+  // Create a singleton instance that will be shared across all tests
+  const mockQueueServiceInstance = {
+    initialize: jest.fn().mockResolvedValue(true),
     connect: jest.fn().mockResolvedValue(true),
     disconnect: jest.fn().mockResolvedValue(true),
-    sendToQueue: jest.fn().mockResolvedValue(true),
-    consumeQueue: jest.fn().mockResolvedValue(true),
+    close: jest.fn().mockResolvedValue(true),
+    addToQueue: jest.fn().mockResolvedValue(true),
+    consumeQueue: jest.fn().mockImplementation((queueName: string, callback: QueueCallback) => {
+      // Store the callback for direct execution in tests
+      if (!mockQueueServiceInstance.queueCallbacks) {
+        mockQueueServiceInstance.queueCallbacks = {};
+      }
+      mockQueueServiceInstance.queueCallbacks[queueName] = callback;
+      return Promise.resolve(true);
+    }),
     checkQueueHealth: jest.fn().mockResolvedValue(true),
-    purgeQueue: jest.fn().mockResolvedValue(true)
-  }))
-}));
+    purgeQueue: jest.fn().mockResolvedValue(true),
+    // Add processDirectly method for the E2E tests
+    processDirectly: jest.fn().mockImplementation(async (queue: string, data: any) => {
+      console.log(`Mock processing message for queue: ${queue}`);
+      // If we have a registered callback for this queue, execute it
+      if (mockQueueServiceInstance.queueCallbacks && mockQueueServiceInstance.queueCallbacks[queue]) {
+        try {
+          return await mockQueueServiceInstance.queueCallbacks[queue](data);
+        } catch (error) {
+          console.error(`Error processing queue message for ${queue}:`, error);
+          throw error;
+        }
+      }
+      return true;
+    }),
+    // Store queue callbacks with proper typing
+    queueCallbacks: {} as QueueCallbacks
+  };
+  
+  // Create a proper mock class with a static getInstance method
+  class MockQueueService {
+    static instance = mockQueueServiceInstance;
+    
+    constructor() {
+      return MockQueueService.instance;
+    }
+    
+    static getInstance() {
+      return MockQueueService.instance;
+    }
+  }
+  
+  // Make the instance look like an instance of MockQueueService
+  Object.setPrototypeOf(mockQueueServiceInstance, MockQueueService.prototype);
+  
+  return {
+    QueueService: MockQueueService
+  };
+});  
 
 // Mock any other services that might try to connect to external resources
 jest.mock('../src/utils/logger', () => ({
@@ -866,7 +992,8 @@ beforeAll(async () => {
       PaymentAddress,
       Transaction,
       MockWebhook,
-      AuditLog
+      AuditLog,
+      IdempotencyKey
     ],
     synchronize: true,
     dropSchema: true,

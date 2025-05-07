@@ -21,7 +21,7 @@ const mockBlockchainService = {
       type: 'PAYMENT',
       expectedAmount: '100.00',
       currency: 'USDT',
-      expiresAt: new Date(Date.now() + 86400000), // 24 hours from now
+      expiresAt: new Date(Date.now() + 86400000).toISOString(), // 24 hours from now as ISO string
       isMonitored: true,
       metadata: { orderId: 'test-123' },
       merchantId: 'merchant_123',
@@ -71,4 +71,4 @@ module.exports = {
   mockBlockchainService,
   mockQueueService,
   mockDatabaseConnection,
-}; 
+};
