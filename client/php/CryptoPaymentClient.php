@@ -44,7 +44,7 @@ class CryptoPaymentClient
      * @param string $apiSecret Your API secret
      * @param string $baseUrl   Base URL for the API (default: production URL)
      */
-    public function __construct(string $apiKey, string $apiSecret, string $baseUrl = 'https://api.example.com/v1')
+    public function __construct(string $apiKey, string $apiSecret, string $baseUrl = 'https://eoscryptopago.com/api/v1')
     {
         if (empty($apiKey) || empty($apiSecret)) {
             throw new CryptoPaymentException('API key and secret are required');

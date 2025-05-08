@@ -14,11 +14,12 @@ use CryptoPaymentGateway\CryptoPaymentClient;
 use CryptoPaymentGateway\CryptoPaymentException;
 
 // Load configuration (in a real application, use environment variables or a secure config system)
-$apiKey = 'your_api_key';
-$apiSecret = 'your_api_secret';
+$apiKey = getenv('CRYPTO_PAYMENT_API_KEY') ?: 'pk_941a83045834ad23c8e38587f2bbf90c';
+$apiSecret = getenv('CRYPTO_PAYMENT_API_SECRET') ?: 'sk_1517e70a64bab54a0a9ea9f9376327dee76e8011f0b22e6d23d8e09e6b2485a6';
+$apiBaseUrl = getenv('CRYPTO_PAYMENT_API_BASEURL') ?: 'https://eoscryptopago.com/api/v1';
 
 // Initialize the client
-$client = new CryptoPaymentClient($apiKey, $apiSecret);
+$client = new CryptoPaymentClient($apiKey, $apiSecret, $apiBaseUrl);
 
 // Get the raw webhook payload
 $payload = file_get_contents('php://input');

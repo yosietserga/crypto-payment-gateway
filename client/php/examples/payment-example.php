@@ -17,12 +17,13 @@ use CryptoPaymentGateway\CryptoPaymentValidationException;
 
 // Load configuration (in a real application, use environment variables or a secure config system)
 // SECURITY NOTE: Never hardcode API credentials in production code
-$apiKey = getenv('CRYPTO_PAYMENT_API_KEY') ?: 'your_api_key';
-$apiSecret = getenv('CRYPTO_PAYMENT_API_SECRET') ?: 'your_api_secret';
+$apiKey = getenv('CRYPTO_PAYMENT_API_KEY') ?: 'pk_941a83045834ad23c8e38587f2bbf90c';
+$apiSecret = getenv('CRYPTO_PAYMENT_API_SECRET') ?: 'sk_1517e70a64bab54a0a9ea9f9376327dee76e8011f0b22e6d23d8e09e6b2485a6';
+$apiBaseUrl = getenv('CRYPTO_PAYMENT_API_BASEURL') ?: 'https://eoscryptopago.com/api/v1';
 
 // Initialize the client
 try {
-    $client = new CryptoPaymentClient($apiKey, $apiSecret);
+    $client = new CryptoPaymentClient($apiKey, $apiSecret, $apiBaseUrl);
     
     // Configure client settings
     $client->setTimeout(60)           // Set request timeout (in seconds)
@@ -35,7 +36,7 @@ try {
 
 // Example order data
 $orderId = 'ORDER-' . rand(10000, 99999);
-$amount = 100.50;
+$amount = 10.50;
 $currency = 'USDT';
 $customerEmail = 'customer@example.com';
 
