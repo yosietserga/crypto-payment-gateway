@@ -16,6 +16,8 @@ import webhookRoutes from './api/routes/webhook.routes';
 import adminRoutes from './api/routes/admin.routes';
 import merchantRoutes from './api/routes/merchant.routes';
 import paymentWebappRoutes from './api/routes/payment-webapp.routes';
+import payoutRoutes from './api/routes/payout.routes';
+//import compatibilityRoutes from './api/routes/compatibility.routes';
 
 // Initialize express app
 const app: Application = express();
@@ -25,6 +27,10 @@ app.use(helmet());
 app.use(cors());
 app.use(express.json());
 app.use(morgan('combined', { stream: { write: (message: string) => logger.info(message.trim()) } }));
+
+// Import and apply sandbox middleware
+import { sandboxMiddleware } from './middleware/sandboxMiddleware';
+app.use(sandboxMiddleware);
 
 // Apply rate limiting - 100 requests per minute per IP
 const limiter = rateLimit({
@@ -53,14 +59,27 @@ app.get('/', (req: Request, res: Response) => {
   });
 });
 
+// Determine if we're in sandbox mode
+const isSandbox = process.env.NODE_ENV === 'sandbox';
+const apiPrefix = isSandbox ? '/sandbox/api/v1' : '/api/v1';
+
+// Log the environment mode
+logger.info(`Starting server in ${isSandbox ? 'SANDBOX' : 'PRODUCTION'} mode`);
+
 // API routes
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/addresses', addressRoutes);
-app.use('/api/v1/transactions', transactionRoutes);
-app.use('/api/v1/webhooks', webhookRoutes);
-app.use('/api/v1/admin', adminRoutes);
-app.use('/api/v1/merchant', merchantRoutes);
-app.use('/api/v1/payment-webapp', paymentWebappRoutes);
+app.use(`${apiPrefix}/auth`, authRoutes);
+app.use(`${apiPrefix}/addresses`, addressRoutes);
+app.use(`${apiPrefix}/transactions`, transactionRoutes);
+app.use(`${apiPrefix}/webhooks`, webhookRoutes);
+app.use(`${apiPrefix}/admin`, adminRoutes);
+app.use(`${apiPrefix}/merchant`, merchantRoutes);
+app.use(`${apiPrefix}/payment-webapp`, paymentWebappRoutes);
+app.use(`${apiPrefix}/payouts`, payoutRoutes);
+
+// Compatibility routes for documented API endpoints
+//app.use('/api/v1', compatibilityRoutes);
+// Also support sandbox compatibility routes
+//app.use('/sandbox/api/v1', compatibilityRoutes);
 
 // Serve static files for payment webapp
 app.use('/payment-webapp', express.static('public/payment-webapp'));

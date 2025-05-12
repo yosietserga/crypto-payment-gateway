@@ -22,7 +22,7 @@ program
   .requiredOption('-p, --password <password>', 'User password (min 8 characters)')
   .requiredOption('-c, --companyName <name>', 'Company/Business name')
   .requiredOption('-n, --contactName <name>', 'Contact person name')
-  .option('-ph, --phone <phone>', 'Contact phone number')
+  .option('--phone <phone>', 'Contact phone number')
   .option('-s, --status <status>', 'Merchant status (active, pending, suspended)', 'pending')
   .option('-r, --role <role>', 'User role (admin, operator, viewer)', 'viewer')
   .parse(process.argv);

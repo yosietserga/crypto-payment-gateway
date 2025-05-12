@@ -98,6 +98,9 @@ export class AuditLog {
 
   @Column({ type: 'varchar', nullable: true })
   merchantId: string | null;
+  
+  @CreateDateColumn({ type: 'timestamp' })
+  timestamp: Date;
 
   @CreateDateColumn()
   @Index()

@@ -1,10 +1,12 @@
 import winston from 'winston';
 import path from 'path';
 import fs from 'fs';
-import { config } from '../config';
+
+// Default log directory if config is not available
+const defaultLogDir = 'logs';
 
 // Create logs directory if it doesn't exist
-const logDir = path.join(process.cwd(), config.logging.directory);
+const logDir = path.join(process.cwd(), process.env.LOG_DIRECTORY || defaultLogDir);
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
 }
@@ -17,9 +19,10 @@ const logFormat = winston.format.combine(
   winston.format.json()
 );
 
-// Create logger instance
+// Create logger instance with default settings
+// These can be updated later when config is available
 export const logger = winston.createLogger({
-  level: config.logging.level,
+  level: process.env.LOG_LEVEL || 'info',
   format: logFormat,
   defaultMeta: { service: 'eoscryptopago' },
   transports: [
@@ -43,6 +46,13 @@ if (process.env.NODE_ENV !== 'production') {
       winston.format.simple()
     ),
   }));
+}
+
+// This function can be called after config is loaded to update logger settings
+export const configureLogger = (config: any) => {
+  if (config && config.logging) {
+    logger.level = config.logging.level;
+  }
 }
 
 // Create a stream object for Morgan

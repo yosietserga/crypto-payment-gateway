@@ -1,8 +1,12 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { sandboxConfig, isSandboxMode } from './sandbox';
 
 // Load environment variables from .env file
 dotenv.config();
+
+// Determine if we're in sandbox mode
+const inSandboxMode = isSandboxMode();
 
 interface DatabaseConfig {
   host: string;
@@ -91,6 +95,36 @@ interface PaymentConfig {
   overpaymentThresholdPercent: number;
 }
 
+interface SandboxConfig {
+  confirmations: {
+    USDT: number;
+    BNB: number;
+    default: number;
+  };
+  processingTimes: {
+    payment: number;
+    payout: number;
+    settlement: number;
+  };
+  apiKeys: {
+    binance: string;
+    coinmarketcap: string;
+  };
+  testWallets: {
+    [key: string]: {
+      address: string;
+      privateKey: string;
+      balance: string;
+    }
+  };
+  isSandboxMode: () => boolean;
+  getTestWallet: (currency: string) => {
+    address: string;
+    privateKey: string;
+    balance: string;
+  } | null;
+}
+
 interface Config {
   env: string;
   port: number;
@@ -104,6 +138,8 @@ interface Config {
   payment: PaymentConfig;
   webhook: WebhookConfig;
   idempotencyKeyExpiration: number; // in seconds
+  sandbox: SandboxConfig;
+  isSandboxMode: boolean;
 }
 
 export const config: Config = {
@@ -208,5 +244,31 @@ export const config: Config = {
     retryDelay: parseInt(process.env.WEBHOOK_RETRY_DELAY || '60000', 10) // 60 seconds
   },
   
-  idempotencyKeyExpiration: parseInt(process.env.IDEMPOTENCY_KEY_EXPIRATION || '86400', 10), // 24 hours
+  idempotencyKeyExpiration: parseInt(process.env.IDEMPOTENCY_KEY_EXPIRATION || '86400', 10), // 24 hours,
+  
+  // Sandbox configuration
+  sandbox: sandboxConfig,
+  
+  // Helper to check if we're in sandbox mode
+  isSandboxMode: inSandboxMode
 };
+
+// Sandbox mode status will be logged after logger is configured
+
+// Configure the logger with the loaded config
+// Use dynamic import to avoid circular dependencies
+// This is executed after the config is fully initialized
+setTimeout(async () => {
+  try {
+    const { configureLogger } = await import('../utils/logger');
+    configureLogger(config);
+    
+    // Log sandbox mode status after logger is configured
+    if (inSandboxMode) {
+      const { logger } = await import('../utils/logger');
+      logger.info('🧪 Running in SANDBOX mode - no real transactions will be processed');
+    }
+  } catch (error) {
+    console.error('Failed to configure logger:', error);
+  }
+}, 0);
