@@ -1,0 +1,71 @@
+/* Binance Dashboard Styles */
+
+.connection-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 8px;
+}
+
+.balance-card {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 16px;
+    height: 100%;
+    border: 1px solid #e9ecef;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.balance-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.balance-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.balance-currency {
+    font-weight: 600;
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+}
+
+.balance-currency i {
+    margin-right: 6px;
+}
+
+.balance-body {
+    text-align: center;
+}
+
+.balance-amount {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.balance-details {
+    font-size: 0.85rem;
+    color: #6c757d;
+}
+
+/* Transaction table styles */
+.badge {
+    font-weight: 500;
+}
+
+.view-transaction-btn {
+    padding: 0.25rem 0.5rem;
+}
+
+/* Transaction details styles */
+.text-break {
+    word-break: break-all;
+}

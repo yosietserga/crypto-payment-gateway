@@ -52,367 +52,20 @@ class PaymentAPI {
      * @returns {Promise<Object>} - Payment address data
      */
     /**
-     * Get auth headers for API requests
+     * Get authenticated headers for API requests requiring authentication
      * @returns {Object} - Headers with authentication token
      */
     getAuthHeaders() {
-        const headers = {
-            'Content-Type': 'application/json'
-        };
-        
         const token = localStorage.getItem('jwt_token');
+        const headers = { ...this.headers };
+        
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         } else {
             console.warn('No JWT token found in localStorage! Authentication will fail.');
-            // Redirect to login page if not authenticated and on protected page
-            if (!window.location.pathname.includes('login.html') &&
-                !window.location.pathname.includes('register.html') &&
-                !window.location.pathname.includes('forgot-password.html')) {
-                window.location.href = 'login.html';
-            }
         }
         
         return headers;
-    }
-    
-    /**
-     * Make an API request with automatic token refresh on 401 errors
-     * @param {string} endpoint - API endpoint
-     * @param {Object} options - Fetch options
-     * @param {boolean} retry - Whether this is a retry attempt after token refresh
-     * @returns {Promise<Object>} - API response object (not parsed JSON)
-     */
-    async request(endpoint, options = {}, retry = false) {
-        try {
-            // Set default method
-            if (!options.method) {
-                options.method = 'GET';
-            }
-            
-            // Set headers
-            options.headers = {
-                ...options.headers || {},
-                ...this.getAuthHeaders()
-            };
-            
-            // Make request with full URL (adding base URL if endpoint doesn't include it)
-            const url = endpoint.startsWith('http') ? endpoint : `${this.apiBaseUrl}${endpoint}`;
-            console.log('Making API request to:', url);
-            const response = await fetch(url, options);
-            
-            // Handle 401 Unauthorized - Token might be expired
-            if (response.status === 401 && !retry && typeof window.checkAndRefreshToken === 'function') {
-                console.log('Received 401, attempting to refresh token...');
-                const refreshed = await window.checkAndRefreshToken();
-                
-                if (refreshed) {
-                    console.log('Token refreshed, retrying request...');
-                    // Retry the request with fresh token
-                    return this.request(endpoint, options, true);
-                } else {
-                    console.error('Token refresh failed, redirecting to login');
-                    window.location.href = 'login.html';
-                    throw new Error('Authentication failed. Please login again.');
-                }
-            }
-            
-            // Return the raw response - we'll parse it in the calling methods
-            return response;
-        } catch (error) {
-            console.error(`API request failed: ${error.message}`);
-            console.error(`API ${options.method} ${endpoint} error:`, error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Get the authentication token
-     * @returns {string|null} - JWT token or null if not authenticated
-     */
-    getToken() {
-        return localStorage.getItem('jwt_token');
-    }
-    
-    /**
-     * Check if the user is authenticated
-     * @returns {boolean} - Whether the user is authenticated
-     */
-    isAuthenticated() {
-        return !!this.getToken();
-    }
-    
-    /**
-     * Get all payouts with optional filtering
-     * @param {string} status - Filter by status ('all', 'pending', 'completed', 'failed')
-     * @param {number} page - Page number
-     * @param {number} limit - Number of items per page
-     * @returns {Promise<Array>} - List of payouts
-     */
-    async getPayouts(status = 'all', page = 1, limit = 20) {
-        try {
-            // Construct URL with parameters
-            let url = `/transactions?type=PAYOUT&page=${page}&limit=${limit}`;
-            
-            // Add status filter if not 'all'
-            if (status && status !== 'all') {
-                url += `&status=${status.toUpperCase()}`;
-            }
-            
-            console.log('Fetching payouts with URL:', url);
-            
-            try {
-                // Make the API request
-                const response = await this.request(url);
-                
-                // Check if the response was successful
-                if (!response.ok) {
-                    console.log('Error response from getPayouts:', response);
-                    let errorMessage;
-                    try {
-                        // Try to get error details if available
-                        const errorText = await response.text();
-                        console.error('API error response:', errorText);
-                        
-                        // Try to parse the error as JSON if possible
-                        try {
-                            const errorJson = JSON.parse(errorText);
-                            if (errorJson.error && errorJson.error.message) {
-                                errorMessage = errorJson.error.message;
-                            } else {
-                                errorMessage = errorText;
-                            }
-                        } catch (jsonError) {
-                            errorMessage = errorText || response.statusText;
-                        }
-                    } catch (textError) {
-                        errorMessage = response.statusText || 'Unknown error';
-                    }
-                    throw new Error('Failed to fetch payouts: ' + errorMessage);
-                }
-                
-                // Parse the JSON response
-                let responseData;
-                try {
-                    responseData = await response.json();
-                    console.log('Payouts API response:', responseData);
-                } catch (jsonError) {
-                    console.error('Failed to parse JSON response:', jsonError);
-                    throw new Error('Failed to fetch payouts: Invalid response format');
-                }
-                
-                // Check if the API returned success and has the expected structure
-                if (responseData.success && responseData.data) {
-                    // The API might return payouts in data.payouts, not directly in data
-                    if (responseData.data.payouts && Array.isArray(responseData.data.payouts)) {
-                        return responseData.data.payouts;
-                    } else if (Array.isArray(responseData.data)) {
-                        return responseData.data;
-                    } else {
-                        console.warn('Unexpected API response structure:', responseData);
-                        return [];
-                    }
-                } else {
-                    console.warn('Unexpected API response structure:', responseData);
-                    return [];
-                }
-            } catch (fetchError) {
-                console.error('Error in request:', fetchError);
-                throw fetchError;
-            }
-        } catch (error) {
-            console.error('Error in getPayouts:', error);
-            // Return empty array instead of throwing to prevent UI breakdown
-            return [];
-        }
-    }
-    
-    /**
-     * Get payout by ID
-     * @param {string} payoutId - Payout ID
-     * @returns {Promise<Object>} - Payout data
-     */
-    async getPayoutById(payoutId) {
-        try {
-            console.log(`Fetching payout details for ID: ${payoutId}`);
-            
-            try {
-                // Make the API request using our request method
-                const response = await this.request(`/transactions/${payoutId}`);
-                
-                // Check if the response was successful
-                if (!response.ok) {
-                    console.log('Error response from getPayoutById:', response);
-                    let errorMessage;
-                    try {
-                        // Try to get error details if available
-                        const errorText = await response.text();
-                        console.error('API error response:', errorText);
-                        
-                        // Try to parse the error as JSON if possible
-                        try {
-                            const errorJson = JSON.parse(errorText);
-                            if (errorJson.error && errorJson.error.message) {
-                                errorMessage = errorJson.error.message;
-                            } else {
-                                errorMessage = errorText;
-                            }
-                        } catch (jsonError) {
-                            errorMessage = errorText || response.statusText;
-                        }
-                    } catch (textError) {
-                        errorMessage = response.statusText || 'Unknown error';
-                    }
-                    throw new Error('Failed to get payout: ' + errorMessage);
-                }
-                
-                // Parse the JSON response
-                let responseData;
-                try {
-                    responseData = await response.json();
-                    console.log('Payout details API response:', responseData);
-                } catch (jsonError) {
-                    console.error('Failed to parse JSON response:', jsonError);
-                    throw new Error('Failed to get payout details: Invalid response format');
-                }
-                
-                // Check if the API returned success and has the expected structure
-                if (responseData.success && responseData.data) {
-                    // The API might return payout data in data.payout, not directly in data
-                    if (responseData.data.payout) {
-                        return responseData.data.payout;
-                    } else {
-                        return responseData.data;
-                    }
-                } else {
-                    console.warn('Unexpected API response structure:', responseData);
-                    return {};
-                }
-            } catch (fetchError) {
-                console.error('Error in request:', fetchError);
-                throw fetchError;
-            }
-        } catch (error) {
-            console.error('Error in getPayoutById:', error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Create a new payout
-     * @param {Object} payoutData - Payout data
-     * @param {number} payoutData.amount - Payout amount
-     * @param {string} payoutData.destinationAddress - Recipient address
-     * @param {string} payoutData.currency - Currency code (e.g., 'USDT')
-     * @param {Object} payoutData.metadata - Additional metadata
-     * @returns {Promise<Object>} - Created payout data
-     */
-    async createPayout(payoutData) {
-        try {
-            console.log('Creating payout with data:', payoutData);
-            
-            // Ensure we have the required fields
-            if (!payoutData.amount || !payoutData.destinationAddress) {
-                throw new Error('Amount and destination address are required');
-            }
-            
-            // Format the data for the payout endpoint
-            const payoutRequest = {
-                amount: payoutData.amount,
-                recipientAddress: payoutData.destinationAddress,
-                currency: payoutData.currency || 'USDT',
-                network: payoutData.network || 'BSC', // BSC network is required by the server
-                webhookUrl: payoutData.webhookUrl || 'https://example.com/webhook', // Provide a default URL to pass validation
-                metadata: payoutData.metadata || {}
-            };
-            
-            // Make the API request to the merchant payouts endpoint
-            const response = await this.request('/merchant/payouts', {
-                method: 'POST',
-                headers: this.getAuthHeaders(),
-                body: JSON.stringify(payoutRequest)
-            });
-            
-            // Check if the response was successful
-            if (!response.ok) {
-                console.log('Error response from createPayout:', response);
-                let errorMessage;
-                try {
-                    // Try to get error details if available
-                    const errorText = await response.text();
-                    console.error('API error response:', errorText);
-                    
-                    // Try to parse the error as JSON if possible
-                    try {
-                        const errorJson = JSON.parse(errorText);
-                        
-                        // Enhanced error extraction
-                        if (errorJson.error) {
-                            // If we have a stack trace, check for specific error patterns
-                            if (errorJson.error.stack) {
-                                const stackError = errorJson.error.stack.toLowerCase();
-                                
-                                // Check for common error patterns
-                                if (stackError.includes('insufficient balance')) {
-                                    // Extract the exact details about available balance
-                                    const balanceMatch = stackError.match(/required:\s*(\d+\.?\d*),\s*available:\s*(\d+\.?\d*)/i);
-                                    if (balanceMatch && balanceMatch.length >= 3) {
-                                        errorMessage = `Insufficient balance. Required: ${balanceMatch[1]}, Available: ${balanceMatch[2]}`;
-                                    } else {
-                                        errorMessage = 'Insufficient balance in your wallet to complete this payout';
-                                    }
-                                } else if (stackError.includes('invalid address')) {
-                                    errorMessage = 'The recipient address is invalid. Please check and try again.';
-                                } else {
-                                    // Use the error message if available
-                                    errorMessage = errorJson.error.message || errorJson.message || 'An error occurred';
-                                }
-                            } else {
-                                errorMessage = errorJson.error.message || errorJson.message || 'An error occurred';
-                            }
-                        } else {
-                            errorMessage = errorText;
-                        }
-                    } catch (jsonError) {
-                        // Handle non-JSON responses
-                        if (errorText.toLowerCase().includes('insufficient balance')) {
-                            errorMessage = 'Insufficient balance in your wallet to complete this payout';
-                        } else {
-                            errorMessage = errorText || response.statusText;
-                        }
-                    }
-                } catch (textError) {
-                    errorMessage = response.statusText || 'Unknown error';
-                }
-                throw new Error('Failed to create payout: ' + errorMessage);
-            }
-            
-            // Parse the JSON response
-            let responseData;
-            try {
-                responseData = await response.json();
-                console.log('Create payout API response:', responseData);
-            } catch (jsonError) {
-                console.error('Failed to parse JSON response:', jsonError);
-                throw new Error('Failed to create payout: Invalid response format');
-            }
-            
-            // Check if the API returned success and has the expected structure
-            if (responseData.success && responseData.data) {
-                // The API might return created payout in data.payout, not directly in data
-                if (responseData.data.payout) {
-                    return responseData.data.payout;
-                } else {
-                    return responseData.data;
-                }
-            } else {
-                console.warn('Unexpected API response structure:', responseData);
-                throw new Error('Unexpected API response structure');
-            }
-        } catch (error) {
-            console.error('Error creating payout:', error);
-            throw error;
-        }
     }
 
     async generatePaymentAddress(paymentData) {
@@ -434,44 +87,18 @@ class PaymentAPI {
             const authHeaders = this.getAuthHeaders();
             
             // Use the correct merchant endpoint for payment addresses
-            const response = await this.request('/merchant/payment-addresses', {
+            const response = await fetch(`${this.apiBaseUrl}/merchant/payment-addresses`, {
                 method: 'POST',
                 headers: authHeaders, // Use authentication headers
                 body: JSON.stringify(apiPayload)
             });
 
             if (!response.ok) {
-                console.log('Error response from generatePaymentAddress:', response);
-                let errorMessage;
-                try {
-                    // Try to get error details if available
-                    const errorText = await response.text();
-                    console.error('API error response:', errorText);
-                    
-                    // Try to parse the error as JSON if possible
-                    try {
-                        const errorJson = JSON.parse(errorText);
-                        if (errorJson.error && errorJson.error.message) {
-                            errorMessage = errorJson.error.message;
-                        } else {
-                            errorMessage = errorText;
-                        }
-                    } catch (jsonError) {
-                        errorMessage = errorText || response.statusText;
-                    }
-                } catch (textError) {
-                    errorMessage = response.statusText || 'Unknown error';
-                }
-                throw new Error('Failed to generate payment address: ' + errorMessage);
+    console.log(response);            const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to generate payment address');
             }
 
-            let data;
-            try {
-                data = await response.json();
-            } catch (jsonError) {
-                console.error('Failed to parse JSON response:', jsonError);
-                throw new Error('Failed to generate payment address: Invalid response format');
-            }
+            const data = await response.json();
             return data.data;
         } catch (error) {
             console.error('Error generating payment address:', error);
@@ -487,43 +114,17 @@ class PaymentAPI {
     async checkPaymentStatus(addressId) {
         try {
             const authHeaders = this.getAuthHeaders();
-            const response = await this.request(`/merchant/payment-addresses/${addressId}`, {
+            const response = await fetch(`${this.apiBaseUrl}/merchant/payment-addresses/${addressId}`, {
                 method: 'GET',
                 headers: authHeaders
             });
 
             if (!response.ok) {
-                console.log('Error response from checkPaymentStatus:', response);
-                let errorMessage;
-                try {
-                    // Try to get error details if available
-                    const errorText = await response.text();
-                    console.error('API error response:', errorText);
-                    
-                    // Try to parse the error as JSON if possible
-                    try {
-                        const errorJson = JSON.parse(errorText);
-                        if (errorJson.error && errorJson.error.message) {
-                            errorMessage = errorJson.error.message;
-                        } else {
-                            errorMessage = errorText;
-                        }
-                    } catch (jsonError) {
-                        errorMessage = errorText || response.statusText;
-                    }
-                } catch (textError) {
-                    errorMessage = response.statusText || 'Unknown error';
-                }
-                throw new Error('Failed to check payment status: ' + errorMessage);
+    console.log(response);            const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to check payment status');
             }
 
-            let data;
-            try {
-                data = await response.json();
-            } catch (jsonError) {
-                console.error('Failed to parse JSON response:', jsonError);
-                throw new Error('Failed to check payment status: Invalid response format');
-            }
+            const data = await response.json();
             return data.data;
         } catch (error) {
             console.error('Error checking payment status:', error);
@@ -542,8 +143,10 @@ class PaymentAPI {
      */
     async getPayments(filter = 'all', search = '', dateRange = '7d', page = 1, limit = 20) {
         try {
+            const authHeaders = this.getAuthHeaders();
+            
             // Use the correct payments endpoint as shown in the error message
-            let url = `/merchant/payment-addresses?page=${page}&limit=${limit}`;
+            let url = `${this.apiBaseUrl}/merchant/payment-addresses?page=${page}&limit=${limit}`;
             
             // Map UI filters to API status values
             if (filter && filter !== 'all') {
@@ -566,72 +169,21 @@ class PaymentAPI {
                 url += `&dateRange=${dateRange}`;
             }
             
-            console.log('Fetching payments with URL:', url);
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: authHeaders
+            });
             
-            try {
-                // Make the API request
-                const response = await this.request(url);
-                
-                // Check if the response was successful
-                if (!response.ok) {
-                    console.log('Error response from getPayments:', response);
-                    let errorMessage;
-                    try {
-                        // Try to get error details if available
-                        const errorText = await response.text();
-                        console.error('API error response:', errorText);
-                        
-                        // Try to parse the error as JSON if possible
-                        try {
-                            const errorJson = JSON.parse(errorText);
-                            if (errorJson.error && errorJson.error.message) {
-                                errorMessage = errorJson.error.message;
-                            } else {
-                                errorMessage = errorText;
-                            }
-                        } catch (jsonError) {
-                            errorMessage = errorText || response.statusText;
-                        }
-                    } catch (textError) {
-                        errorMessage = response.statusText || 'Unknown error';
-                    }
-                    throw new Error('Failed to fetch payments: ' + errorMessage);
-                }
-                
-                // Parse the JSON response
-                let responseData;
-                try {
-                    responseData = await response.json();
-                    console.log('Payments API response:', responseData);
-                } catch (jsonError) {
-                    console.error('Failed to parse JSON response:', jsonError);
-                    throw new Error('Failed to fetch payments: Invalid response format');
-                }
-                
-                // Check if the API returned success and has the expected structure
-                if (responseData.success && responseData.data) {
-                    // The API returns addresses in data.addresses, not directly in data
-                    if (responseData.data.addresses && Array.isArray(responseData.data.addresses)) {
-                        console.log('Found', responseData.data.addresses.length, 'payment addresses');
-                        return responseData.data.addresses;
-                    } else {
-                        console.warn('API response missing addresses array:', responseData);
-                        return [];
-                    }
-                } else {
-                    console.warn('Unexpected API response structure:', responseData);
-                    return [];                    
-                }
-            } catch (fetchError) {
-                console.error('Error in request:', fetchError);
-                // For testing purposes, return an empty array instead of throwing
-                // This will prevent the UI from breaking when the API is unavailable
-                return [];
+            if (!response.ok) {
+    console.log(response);            const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to fetch payments');
             }
+            
+            const data = await response.json();
+            return data.data;
         } catch (error) {
-            console.error('Error in getPayments:', error);
-            // Return empty array instead of throwing to prevent UI breakdown
-            return [];
+            console.error('Error fetching payments:', error);
+            throw error;
         }
     }
     
@@ -642,72 +194,22 @@ class PaymentAPI {
      */
     async getPaymentById(paymentId) {
         try {
-            console.log(`Fetching payment details for ID: ${paymentId}`);
-            
-            try {
-                // Make the API request using our request method
-                const response = await this.request(`/merchant/payment-addresses/${paymentId}`);
-                
-                // Check if the response was successful
-                if (!response.ok) {
-                    console.log('Error response from getPaymentById:', response);
-                    let errorMessage;
-                    try {
-                        // Try to get error details if available
-                        const errorText = await response.text();
-                        console.error('API error response:', errorText);
-                        
-                        // Try to parse the error as JSON if possible
-                        try {
-                            const errorJson = JSON.parse(errorText);
-                            if (errorJson.error && errorJson.error.message) {
-                                errorMessage = errorJson.error.message;
-                            } else {
-                                errorMessage = errorText;
-                            }
-                        } catch (jsonError) {
-                            errorMessage = errorText || response.statusText;
-                        }
-                    } catch (textError) {
-                        errorMessage = response.statusText || 'Unknown error';
-                    }
-                    throw new Error('Failed to get payment: ' + errorMessage);
-                }
-                
-                // Parse the JSON response
-                let responseData;
-                try {
-                    responseData = await response.json();
-                    console.log('Payment details API response:', responseData);
-                } catch (jsonError) {
-                    console.error('Failed to parse JSON response:', jsonError);
-                    throw new Error('Failed to get payment details: Invalid response format');
-                }
-                
-                // Check if the API returned success and has the expected structure
-                if (responseData.success && responseData.data) {
-                    // The API returns address data in data.address, not directly in data
-                    if (responseData.data.address) {
-                        return responseData.data.address;
-                    } else {
-                        // If there's no address property but there is data, return the data object
-                        console.log('API response has data but no address property, using data directly');
-                        return responseData.data;
-                    }
-                } else {
-                    console.warn('Unexpected API response structure:', responseData);
-                    return {};                    
-                }
-            } catch (fetchError) {
-                console.error('Error in request:', fetchError);
-                // For testing purposes, return an empty object instead of throwing
-                // This will prevent the UI from breaking when the API is unavailable
-                return {};
+            const authHeaders = this.getAuthHeaders();
+            const response = await fetch(`${this.apiBaseUrl}/merchant/payment-addresses/${paymentId}`, {
+                method: 'GET',
+                headers: authHeaders
+            });
+
+            if (!response.ok) {
+    console.log(response);            const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to get payment');
             }
+
+            const data = await response.json();
+            return data.data;
         } catch (error) {
-            console.error('Error in getPaymentById:', error);
-            // Return empty object instead of throwing to prevent UI breakdown
-            return {};
+            console.error('Error getting payment:', error);
+            throw error;
         }
     }
     

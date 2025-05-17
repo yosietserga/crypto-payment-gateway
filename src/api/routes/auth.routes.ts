@@ -9,6 +9,7 @@ import { Merchant, MerchantStatus } from '../../db/entities/Merchant';
 import { AuditLog, AuditLogAction, AuditLogEntityType } from '../../db/entities/AuditLog';
 import { logger } from '../../utils/logger';
 import { getConnection } from '../../db/connection';
+import { loginRateLimitMiddleware } from '../../middleware/rateLimitMiddleware';
 
 const router = Router();
 
@@ -47,14 +48,10 @@ router.post(
         return next(new ApiError(409, 'User already exists', true));
       }
 
-      // Hash password
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(password, salt);
-
-      // Create user
+      // Create user - Let the User entity handle password hashing
       const user = new User();
       user.email = email;
-      user.password = hashedPassword;
+      user.password = password; // Entity will hash this via @BeforeInsert hook
       user.firstName = contactName.split(' ')[0] || ''; // Extract first name from contact name
       user.lastName = contactName.split(' ').slice(1).join(' ') || ''; // Extract last name from contact name
       user.role = UserRole.VIEWER; // Use enum value instead of string
@@ -119,6 +116,7 @@ router.post(
     body('email').isEmail().normalizeEmail(),
     body('password').isLength({ min: 8 })
   ],
+  loginRateLimitMiddleware,
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -140,14 +138,23 @@ router.post(
       });
 
       if (!user) {
-        return next(new ApiError(401, 'Invalid credentials', true));
+        // Don't reveal whether the user exists or not
+        logger.debug(`Login attempt for non-existent user: ${email}`);
+        return next(new ApiError(401, 'Invalid email or password', true));
       }
 
       // Check password
-      const isMatch = await bcrypt.compare(password, user.password);
+      const isMatch = await user.validatePassword(password);
+      
       if (!isMatch) {
-        return next(new ApiError(401, 'Invalid credentials', true));
+        // Log failed attempt but don't reveal if it's a password issue
+        logger.debug(`Failed login attempt for user: ${email}`);
+        return next(new ApiError(401, 'Invalid email or password', true));
       }
+      
+      // Update last login timestamp
+      user.lastLoginAt = new Date();
+      await userRepository.save(user);
 
       // Log the login
       const auditLog = new AuditLog();

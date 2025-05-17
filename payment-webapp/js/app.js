@@ -5,10 +5,10 @@
 
 // Configuration
 const config = {
-    apiBaseUrl: '/api/v1', // Use relative URL for same-domain calls
+    apiBaseUrl: 'http://localhost:3000/api/v1', // Use absolute URL with port
     absoluteApiBaseUrl: 'https://eoscryptopago.com/api/v1', // Full URL for cross-domain calls
-    apiKey: 'YOUR_API_KEY', // This should be replaced with your actual API key
-    apiSecret: 'YOUR_API_SECRET', // This should be replaced with your actual API secret
+    apiKey: 'pk_941a83045834ad23c8e38587f2bbf90c', // Production API key
+    apiSecret: 'sk_1517e70a64bab54a0a9ea9f9376327dee76e8011f0b22e6d23d8e09e6b2485a6', // Production API secret
     defaultExpiryMinutes: 15,
     refreshInterval: 5000, // 5 seconds
     validateAddressRegex: /^0x[a-fA-F0-9]{40}$/, // Basic Ethereum/BSC address validation
@@ -114,16 +114,16 @@ const payoutElements = {
 };
 
 // Event Listeners - Payment
-elements.generatePaymentBtn.addEventListener('click', generatePaymentAddress);
-elements.copyAddressBtn.addEventListener('click', copyAddressToClipboard);
-elements.cancelPaymentBtn.addEventListener('click', cancelPayment);
-elements.returnToMerchantBtn.addEventListener('click', resetToInitScreen);
-elements.tryAgainBtn.addEventListener('click', resetToInitScreen);
+if (elements.generatePaymentBtn) elements.generatePaymentBtn.addEventListener('click', generatePaymentAddress);
+if (elements.copyAddressBtn) elements.copyAddressBtn.addEventListener('click', copyAddressToClipboard);
+if (elements.cancelPaymentBtn) elements.cancelPaymentBtn.addEventListener('click', cancelPayment);
+if (elements.returnToMerchantBtn) elements.returnToMerchantBtn.addEventListener('click', resetToInitScreen);
+if (elements.tryAgainBtn) elements.tryAgainBtn.addEventListener('click', resetToInitScreen);
 
 // Event Listeners - Payout
-payoutElements.createPayoutBtn.addEventListener('click', createPayout);
-payoutElements.returnToPayoutBtn.addEventListener('click', resetToPayoutInitScreen);
-payoutElements.tryPayoutAgainBtn.addEventListener('click', resetToPayoutInitScreen);
+if (payoutElements.createPayoutBtn) payoutElements.createPayoutBtn.addEventListener('click', createPayout);
+if (payoutElements.returnToPayoutBtn) payoutElements.returnToPayoutBtn.addEventListener('click', resetToPayoutInitScreen);
+if (payoutElements.tryPayoutAgainBtn) payoutElements.tryPayoutAgainBtn.addEventListener('click', resetToPayoutInitScreen);
 
 // Initialize tabs with Bootstrap
 const tabElements = document.querySelectorAll('#paymentTabs button');
@@ -349,7 +349,7 @@ function generatePaymentAddress() {
     })
     .then(response => {
         if (!response.ok) {
-            return response.json().then(errorData => {
+    console.log(response);        return response.json().then(errorData => {
                 throw new Error(errorData.error?.message || 'Failed to generate payment address');
             });
         }
@@ -491,7 +491,7 @@ function pollPaymentStatus() {
         })
         .then(response => {
             if (!response.ok) {
-                return response.json().then(errorData => {
+    console.log(response);            return response.json().then(errorData => {
                     throw new Error(errorData.error?.message || 'Failed to check payment status');
                 });
             }
@@ -625,7 +625,7 @@ function createPayout() {
     })
     .then(response => {
         if (!response.ok) {
-            return response.json().then(errorData => {
+    console.log(response);        return response.json().then(errorData => {
                 throw new Error(errorData.error?.message || 'Failed to create payout');
             });
         }
@@ -703,7 +703,7 @@ function pollPayoutStatus() {
         })
         .then(response => {
             if (!response.ok) {
-                return response.json().then(errorData => {
+    console.log(response);            return response.json().then(errorData => {
                     throw new Error(errorData.error?.message || 'Failed to check payout status');
                 });
             }
@@ -771,4 +771,4 @@ function initApp() {
 }
 
 // Run the initialization
-document.addEventListener('DOMContentLoaded', initApp); 
+document.addEventListener('DOMContentLoaded', initApp);

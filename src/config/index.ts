@@ -26,6 +26,14 @@ interface RedisConfig {
   ttl: number;
 }
 
+interface BinanceConfig {
+  apiKey: string;
+  apiSecret: string;
+  webhookSecret: string;
+  apiUrl: string;
+  network: string;
+}
+
 interface BlockchainConfig {
   bscMainnet: {
     rpcUrl: string;
@@ -140,6 +148,7 @@ interface Config {
   idempotencyKeyExpiration: number; // in seconds
   sandbox: SandboxConfig;
   isSandboxMode: boolean;
+  binance: BinanceConfig;
 }
 
 export const config: Config = {
@@ -241,16 +250,20 @@ export const config: Config = {
   
   webhook: {
     maxRetries: parseInt(process.env.WEBHOOK_MAX_RETRIES || '3', 10),
-    retryDelay: parseInt(process.env.WEBHOOK_RETRY_DELAY || '60000', 10) // 60 seconds
+    retryDelay: parseInt(process.env.WEBHOOK_RETRY_DELAY || '60000', 10), // 1 minute
   },
   
-  idempotencyKeyExpiration: parseInt(process.env.IDEMPOTENCY_KEY_EXPIRATION || '86400', 10), // 24 hours,
-  
-  // Sandbox configuration
+  idempotencyKeyExpiration: parseInt(process.env.IDEMPOTENCY_KEY_EXPIRATION || '86400', 10),
   sandbox: sandboxConfig,
+  isSandboxMode: inSandboxMode,
   
-  // Helper to check if we're in sandbox mode
-  isSandboxMode: inSandboxMode
+  binance: {
+    apiKey: process.env.BINANCE_API_KEY || '',
+    apiSecret: process.env.BINANCE_API_SECRET || '',
+    webhookSecret: process.env.BINANCE_WEBHOOK_SECRET || 'binance-webhook-secret-change-in-production',
+    apiUrl: process.env.BINANCE_API_URL || 'https://api.binance.com',
+    network: process.env.BINANCE_NETWORK || 'BEP20'
+  }
 };
 
 // Sandbox mode status will be logged after logger is configured

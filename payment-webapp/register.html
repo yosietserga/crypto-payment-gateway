@@ -27,7 +27,7 @@
                     <label for="contactName" class="form-label">Full Name</label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-person"></i></span>
-                        <input type="text" class="form-control" id="contactName" placeholder="Your full name" required>
+                        <input type="text" class="form-control" id="contactName" name="contactName" placeholder="Your full name" required>
                     </div>
                     <div class="invalid-feedback">Please enter your name.</div>
                 </div>
@@ -36,7 +36,7 @@
                     <label for="companyName" class="form-label">Business Name</label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-building"></i></span>
-                        <input type="text" class="form-control" id="companyName" placeholder="Your business name" required>
+                        <input type="text" class="form-control" id="companyName" name="companyName" placeholder="Your business name" required>
                     </div>
                     <div class="invalid-feedback">Please enter your business name.</div>
                 </div>
@@ -45,7 +45,7 @@
                     <label for="contactPhone" class="form-label">Phone Number</label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-telephone"></i></span>
-                        <input type="tel" class="form-control" id="contactPhone" placeholder="+1234567890" pattern="[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}">
+                        <input type="tel" class="form-control" id="contactPhone" name="contactPhone" placeholder="+1234567890" pattern="[\+]?[(]?[0-9]{3}[)]?[-\s\.]?[0-9]{3}[-\s\.]?[0-9]{4,6}">
                     </div>
                     <div class="invalid-feedback">Please enter a valid phone number (e.g., +1234567890).</div>
                 </div>
@@ -54,7 +54,7 @@
                     <label for="email" class="form-label">Email</label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-envelope"></i></span>
-                        <input type="email" class="form-control" id="email" placeholder="you@example.com" required>
+                        <input type="email" class="form-control" id="email" name="email" placeholder="you@example.com" required>
                     </div>
                     <div class="invalid-feedback">Please enter a valid email address.</div>
                 </div>
@@ -63,8 +63,8 @@
                     <label for="password" class="form-label">Password</label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-lock"></i></span>
-                        <input type="password" class="form-control" id="password" placeholder="••••••••" required minlength="8">
-                        <button class="btn btn-outline-secondary toggle-password" type="button" title="Toggle password visibility">
+                        <input type="password" class="form-control" id="password" name="password" placeholder="••••••••" required minlength="8">
+                        <button class="btn btn-outline-secondary toggle-password" type="button" id="toggle-password-btn" title="Toggle password visibility">
                             <i class="bi bi-eye"></i>
                         </button>
                     </div>
@@ -81,8 +81,8 @@
                     <label for="confirm-password" class="form-label">Confirm Password</label>
                     <div class="input-group">
                         <span class="input-group-text"><i class="bi bi-lock"></i></span>
-                        <input type="password" class="form-control" id="confirm-password" placeholder="••••••••" required>
-                        <button class="btn btn-outline-secondary toggle-password" type="button" title="Toggle password visibility">
+                        <input type="password" class="form-control" id="confirm-password" name="confirm-password" placeholder="••••••••" required>
+                        <button class="btn btn-outline-secondary toggle-password" type="button" id="toggle-confirm-password-btn" title="Toggle password visibility">
                             <i class="bi bi-eye"></i>
                         </button>
                     </div>
@@ -90,7 +90,7 @@
                 </div>
                 
                 <div class="mb-3 form-check">
-                    <input type="checkbox" class="form-check-input" id="terms" required>
+                    <input type="checkbox" class="form-check-input" id="terms" name="terms" required>
                     <label class="form-check-label" for="terms">I agree to the <a href="#" class="text-decoration-none">Terms of Service</a> and <a href="#" class="text-decoration-none">Privacy Policy</a></label>
                     <div class="invalid-feedback">You must agree to our terms and conditions.</div>
                 </div>

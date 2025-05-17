@@ -5,10 +5,10 @@
 
 // Configuration
 const config = {
-    apiBaseUrl: '/api/v1', // Use relative URL for same-domain calls
-    absoluteApiBaseUrl: 'https://eoscryptopago.com/api/v1', // Full URL for cross-domain calls
-    apiKey: 'demo_api_key', // This should be replaced with your actual API key
-    apiSecret: 'demo_api_secret', // This should be replaced with your actual API secret
+    apiBaseUrl: 'http://localhost:3000/api/v1', // Use absolute URL with port
+    absoluteApiBaseUrl: 'http://localhost:3000/api/v1', // Full URL for cross-domain calls
+    apiKey: 'pk_941a83045834ad23c8e38587f2bbf90c', // Production API key
+    apiSecret: 'sk_1517e70a64bab54a0a9ea9f9376327dee76e8011f0b22e6d23d8e09e6b2485a6', // Production API secret
     defaultExpiryMinutes: 15,
     refreshInterval: 5000, // 5 seconds
     validateAddressRegex: /^0x[a-fA-F0-9]{40}$/, // Basic Ethereum/BSC address validation
@@ -555,7 +555,7 @@ function initApp() {
     }
     
     console.log('Crypto Payment Gateway initialized in', 
-                config.apiBaseUrl === '/api/v1' ? 'demo mode' : 'production mode');
+                config.apiBaseUrl === 'http://localhost:3000/api/v1' ? 'demo mode' : 'production mode');
 }
 
 // Run the initialization when DOM is ready

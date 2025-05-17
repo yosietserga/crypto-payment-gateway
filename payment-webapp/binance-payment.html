@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binance Payment - Crypto Payment Gateway</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body class="dashboard-body">
+    <div class="dashboard-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <img src="img/logo.svg" alt="Logo" class="sidebar-logo">
+                <h1 class="sidebar-title">Payment Gateway</h1>
+                <button class="sidebar-toggle d-md-none" id="sidebar-toggle" aria-label="Toggle sidebar">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <ul class="sidebar-menu">
+                    <li class="sidebar-menu-item">
+                        <a href="dashboard.html" class="sidebar-menu-link">
+                            <i class="bi bi-speedometer2"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="payments.html" class="sidebar-menu-link">
+                            <i class="bi bi-wallet2"></i>
+                            <span>Payments</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="payouts.html" class="sidebar-menu-link">
+                            <i class="bi bi-send"></i>
+                            <span>Payouts</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="addresses.html" class="sidebar-menu-link">
+                            <i class="bi bi-credit-card"></i>
+                            <span>Addresses</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="binance.html" class="sidebar-menu-link">
+                            <i class="bi bi-currency-exchange"></i>
+                            <span>Binance</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item active">
+                        <a href="binance-payment.html" class="sidebar-menu-link active">
+                            <i class="bi bi-currency-exchange"></i>
+                            <span>Binance Payment</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="webhooks.html" class="sidebar-menu-link">
+                            <i class="bi bi-hdd-network"></i>
+                            <span>Webhooks</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="api-keys.html" class="sidebar-menu-link">
+                            <i class="bi bi-key"></i>
+                            <span>API Keys</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-divider"></li>
+                    <li class="sidebar-menu-item">
+                        <a href="settings.html" class="sidebar-menu-link">
+                            <i class="bi bi-gear"></i>
+                            <span>Settings</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <a href="profile.html" class="sidebar-user">
+                    <div class="sidebar-user-avatar">
+                        <i class="bi bi-person-circle"></i>
+                    </div>
+                    <div class="sidebar-user-info">
+                        <h3 class="sidebar-user-name" id="user-name">Merchant Account</h3>
+                        <p class="sidebar-user-role" id="user-email">Merchant</p>
+                    </div>
+                </a>
+                <a href="#" class="sidebar-logout" id="logout-button">
+                    <i class="bi bi-box-arrow-right"></i>
+                </a>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <div class="header-left">
+                    <button class="sidebar-toggle d-md-none" id="sidebar-toggle-open" aria-label="Toggle sidebar">
+                        <i class="bi bi-list"></i>
+                    </button>
+                    <h1 class="content-title">Binance Payment</h1>
+                </div>
+                <div class="header-right">
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="helpDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-question-circle me-1"></i> Help
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="helpDropdown">
+                            <li><a class="dropdown-item" href="#">Documentation</a></li>
+                            <li><a class="dropdown-item" href="#">API Reference</a></li>
+                            <li><a class="dropdown-item" href="#">Contact Support</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </header>
+            
+            <div class="content-body">
+                <div class="row">
+                    <div class="col-lg-8">
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Binance Wallet Integration</h5>
+                            </div>
+                            <div class="card-body">
+                                <p class="card-text">
+                                    This feature allows you to send payments directly from your Binance wallet. 
+                                    You'll need to configure your Binance API credentials with withdrawal permissions.
+                                </p>
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    Your API credentials are securely handled and never stored on our servers.
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Binance Payment Form Container -->
+                        <div id="binance-payment-container"></div>
+                    </div>
+                    
+                    <div class="col-lg-4">
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Recent Transactions</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="recent-transactions-container">
+                                    <div class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="mt-2">Loading transactions...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Wallet Balance</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="wallet-balance-container">
+                                    <div class="text-center py-4">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                        <p class="mt-2">Loading balance...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/app.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/payment-api.js"></script>
+    <script src="js/binance-payment.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if user is authenticated
+            if (!isAuthenticated()) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            // Initialize the API client
+            const api = new PaymentAPI();
+            
+            // Initialize Binance payment handler
+            const binanceHandler = new BinancePaymentHandler(api);
+            binanceHandler.initPaymentForm('binance-payment-container');
+            
+            // Load recent transactions
+            loadRecentTransactions(api);
+            
+            // Load wallet balance
+            loadWalletBalance(api);
+            
+            // Mobile menu toggle
+            const sidebarToggleOpen = document.getElementById('sidebar-toggle-open');
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const sidebar = document.getElementById('sidebar');
+            
+            if (sidebarToggleOpen) {
+                sidebarToggleOpen.addEventListener('click', function() {
+                    sidebar.classList.add('show');
+                });
+            }
+            
+            if (sidebarToggle) {
+                sidebarToggle.addEventListener('click', function() {
+                    sidebar.classList.remove('show');
+                });
+            }
+            
+            // Logout functionality
+            function handleLogout(e) {
+                e.preventDefault();
+                localStorage.removeItem('auth_token');
+                localStorage.removeItem('user_data');
+                window.location.href = 'login.html';
+            }
+            
+            document.getElementById('logout-button').addEventListener('click', handleLogout);
+        });
+        
+        // Load recent transactions
+        async function loadRecentTransactions(api) {
+            const container = document.getElementById('recent-transactions-container');
+            
+            try {
+                const transactions = await api.getBinanceTransactions(1, 5);
+                
+                if (transactions.length === 0) {
+                    container.innerHTML = '<p class="text-muted">No recent transactions found.</p>';
+                    return;
+                }
+                
+                let html = '<ul class="list-group list-group-flush">';
+                
+                transactions.forEach(tx => {
+                    html += `
+                        <li class="list-group-item px-0">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <span class="badge bg-${tx.status === 'completed' ? 'success' : tx.status === 'pending' ? 'warning' : 'secondary'} mb-1">${tx.status}</span>
+                                    <small class="d-block text-muted">${new Date(tx.createdAt).toLocaleString()}</small>
+                                </div>
+                                <div class="text-end">
+                                    <span class="fw-bold">${tx.amount} ${tx.currency}</span>
+                                </div>
+                            </div>
+                        </li>
+                    `;
+                });
+                
+                html += '</ul>';
+                container.innerHTML = html;
+                
+            } catch (error) {
+                container.innerHTML = `<div class="alert alert-danger">Error loading transactions: ${error.message}</div>`;
+            }
+        }
+        
+        // Load wallet balance
+        async function loadWalletBalance(api) {
+            const container = document.getElementById('wallet-balance-container');
+            
+            try {
+                const balances = await api.getBinanceBalances();
+                
+                if (Object.keys(balances).length === 0) {
+                    container.innerHTML = '<p class="text-muted">No balance information available.</p>';
+                    return;
+                }
+                
+                let html = '<ul class="list-group list-group-flush">';
+                
+                Object.entries(balances).forEach(([currency, balance]) => {
+                    if (parseFloat(balance.total) > 0) {
+                        html += `
+                            <li class="list-group-item px-0">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <span class="fw-bold">${currency}</span>
+                                    </div>
+                                    <div class="text-end">
+                                        <span>${balance.free} <small class="text-muted">available</small></span>
+                                        ${parseFloat(balance.locked) > 0 ? `<small class="d-block text-muted">${balance.locked} locked</small>` : ''}
+                                    </div>
+                                </div>
+                            </li>
+                        `;
+                    }
+                });
+                
+                html += '</ul>';
+                container.innerHTML = html;
+                
+            } catch (error) {
+                container.innerHTML = `<div class="alert alert-danger">Error loading balance: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

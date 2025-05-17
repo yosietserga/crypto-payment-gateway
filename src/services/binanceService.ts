@@ -407,6 +407,90 @@ export class BinanceService {
   }
 
   /**
+   * Validate Binance API credentials
+   * @returns Promise<boolean> True if credentials are valid, false otherwise
+   */
+  async validateApiCredentials(): Promise<boolean> {
+    try {
+      // Try to get account info, which requires valid API credentials
+      await this.makeSignedRequest('/api/v3/account');
+      logger.info('Binance API credentials validated successfully');
+      return true;
+    } catch (error) {
+      logger.error('Binance API credentials validation failed', { error });
+      return false;
+    }
+  }
+
+  /**
+   * Get account information from Binance
+   * @returns Account information including balances
+   */
+  async getAccountInformation(): Promise<any> {
+    try {
+      const response = await this.makeSignedRequest('/api/v3/account');
+      return response;
+    } catch (error) {
+      logger.error('Failed to get account information from Binance', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get all supported coins and their networks from Binance
+   * @returns Array of coins with their network information
+   */
+  async getAllCoins(): Promise<any[]> {
+    try {
+      const response = await this.makeSignedRequest('/sapi/v1/capital/config/getall');
+      return response;
+    } catch (error) {
+      logger.error('Failed to get all coins from Binance', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get withdrawal history from Binance
+   * @param params Optional parameters for filtering
+   * @returns Array of withdrawal records
+   */
+  async getWithdrawalHistoryWithParams(params?: any): Promise<any[]> {
+    try {
+      const response = await this.makeSignedRequest('/sapi/v1/capital/withdraw/history', 'GET', params || {});
+      return response;
+    } catch (error) {
+      logger.error('Failed to get withdrawal history from Binance', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Get deposit history from Binance
+   * @param params Optional parameters for filtering
+   * @returns Array of deposit records
+   */
+  async getDepositHistoryWithParams(params?: any): Promise<any[]> {
+    try {
+      const response = await this.makeSignedRequest('/sapi/v1/capital/deposit/hisrec', 'GET', params || {});
+      return response;
+    } catch (error) {
+      logger.error('Failed to get deposit history from Binance', { error });
+      throw error;
+    }
+  }
+
+  /**
+   * Public wrapper for address validation
+   * @param address Address to validate
+   * @param network Network for the address
+   * @returns Whether the address is valid
+   */
+  public validateAddress(address: string, network: string): boolean {
+    return this.validateAddressFormat(address, network);
+  }
+
+  /**
    * Get deposit address for a specific asset and network
    * @param asset Asset symbol (e.g., 'USDT')
    * @param network Network to use (e.g., 'BSC')
@@ -462,11 +546,12 @@ export class BinanceService {
         throw new Error(`Missing required withdrawal parameters for transaction ${transaction.id}`);
       }
 
-      // Update transaction status to processing
+      // Update transaction status to CONFIRMING (not "processing" which is invalid)
       const connection = await getConnection();
       const transactionRepository = connection.getRepository(Transaction);
       
-      transaction.status = ExtendedTransactionStatus.PROCESSING as unknown as TransactionStatus;
+      // Use CONFIRMING instead of PROCESSING since processing isn't a valid enum in the database
+      transaction.status = TransactionStatus.CONFIRMING;
       await transactionRepository.save(transaction);
       
       // Execute the withdrawal
@@ -599,6 +684,8 @@ export class BinanceService {
       logger.error(`Failed to create API error audit log`, { error });
     }
   }
+
+  /* Removed duplicate processWithdrawal implementation */
 
   /**
    * Create a new payout transaction and process it

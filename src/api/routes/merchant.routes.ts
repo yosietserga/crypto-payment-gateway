@@ -501,14 +501,14 @@ router.post(
       const queueService = QueueService.getInstance();
       const binanceService = new BinanceService();
       
-      // Create payout
+      // Create payout - using the expected parameter format
       const payout = await binanceService.createPayout({
         merchantId,
         amount: parseFloat(amount),
         currency,
         network,
         recipientAddress,
-        webhookUrl,
+        webhookUrl: webhookUrl || 'https://example.com/webhook', // Provide default if not specified
         metadata
       });
 
@@ -531,9 +531,39 @@ router.post(
         success: true,
         data: payout
       });
-    } catch (error) {
-      logger.error('Error creating payout', { error, merchantId });
-      next(new ApiError(500, 'Failed to create payout', true));
+    } catch (error: unknown) {
+      logger.error('Error creating payout', { error, params: { amount, currency, merchantId, network, recipientAddress, metadata, webhookUrl }, merchantId });
+      
+      // Extract specific error details if available
+      let errorMessage = 'Failed to create payout';
+      let statusCode = 500;
+      
+      // Type guard to check if error is an object with a message property
+      if (typeof error === 'object' && error !== null && 'message' in error) {
+        const errorMsg = error.message;
+        
+        if (typeof errorMsg === 'string') {
+          // Check for common error patterns
+          if (errorMsg.toLowerCase().includes('insufficient balance')) {
+            // Extract the balance details if available
+            const balanceMatch = errorMsg.match(/required:\s*(\d+\.?\d*),\s*available:\s*(\d+\.?\d*)/i);
+            if (balanceMatch && balanceMatch.length >= 3) {
+              errorMessage = `Insufficient balance. Required: ${balanceMatch[1]}, Available: ${balanceMatch[2]}`;
+            } else {
+              errorMessage = 'Insufficient balance in your wallet to complete this payout';
+            }
+            statusCode = 400; // Use 400 for business validation errors
+          } else if (errorMsg.toLowerCase().includes('invalid address')) {
+            errorMessage = 'The recipient address is invalid. Please check and try again.';
+            statusCode = 400;
+          } else {
+            // Use the original error message if available
+            errorMessage = errorMsg;
+          }
+        }
+      }
+      
+      next(new ApiError(statusCode, errorMessage, true));
     }
   })
 );
@@ -584,7 +614,7 @@ router.get(
         success: true,
         data: payout
       });
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error('Error fetching payout', { error, merchantId, payoutId });
       next(new ApiError(500, 'Failed to fetch payout', true));
     }

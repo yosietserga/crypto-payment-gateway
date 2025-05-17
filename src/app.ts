@@ -17,16 +17,33 @@ import adminRoutes from './api/routes/admin.routes';
 import merchantRoutes from './api/routes/merchant.routes';
 import paymentWebappRoutes from './api/routes/payment-webapp.routes';
 import payoutRoutes from './api/routes/payout.routes';
+import binanceRoutes from './api/routes/binance.routes';
+import binanceWebhookRoutes from './api/routes/binance-webhook.routes';
 //import compatibilityRoutes from './api/routes/compatibility.routes';
 
 // Initialize express app
 const app: Application = express();
 
-// Apply security middleware
-app.use(helmet());
+// Apply security middleware with less restrictive settings for development
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false // Disable CSP for development
+}));
+
+// Basic CORS configuration - simpler approach
 app.use(cors());
+
+// Standard middleware
 app.use(express.json());
 app.use(morgan('combined', { stream: { write: (message: string) => logger.info(message.trim()) } }));
+
+// Enable simple CORS headers for all responses
+app.use((req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  next();
+});
 
 // Import and apply sandbox middleware
 import { sandboxMiddleware } from './middleware/sandboxMiddleware';
@@ -73,8 +90,10 @@ app.use(`${apiPrefix}/transactions`, transactionRoutes);
 app.use(`${apiPrefix}/webhooks`, webhookRoutes);
 app.use(`${apiPrefix}/admin`, adminRoutes);
 app.use(`${apiPrefix}/merchant`, merchantRoutes);
-app.use(`${apiPrefix}/payment-webapp`, paymentWebappRoutes);
+app.use(`${apiPrefix}/payment`, paymentWebappRoutes);
 app.use(`${apiPrefix}/payouts`, payoutRoutes);
+app.use(`${apiPrefix}/binance`, binanceRoutes);
+app.use(`${apiPrefix}/binance-webhooks`, binanceWebhookRoutes);
 
 // Compatibility routes for documented API endpoints
 //app.use('/api/v1', compatibilityRoutes);
@@ -82,7 +101,10 @@ app.use(`${apiPrefix}/payouts`, payoutRoutes);
 //app.use('/sandbox/api/v1', compatibilityRoutes);
 
 // Serve static files for payment webapp
-app.use('/payment-webapp', express.static('public/payment-webapp'));
+app.use('/payment-webapp', express.static('payment-webapp'));
+
+// Serve Binance dashboard from payment-webapp directory
+app.use('/binance-dashboard', express.static('payment-webapp'));
 
 // 404 handler
 app.use((req: Request, res: Response) => {
@@ -116,6 +138,7 @@ app.listen(PORT, '0.0.0.0', async () => {
     const { QueueService } = await import('./services/queueService');
     const { WebhookService } = await import('./services/webhookService');
     const { BlockchainService } = await import('./services/blockchainService');
+    const { BinanceService } = await import('./services/binanceService');
     const { TransactionMonitorService } = await import('./services/transactionMonitorService');
     
     // Initialize queue service with fallback capability
@@ -133,6 +156,27 @@ app.listen(PORT, '0.0.0.0', async () => {
     
     // Initialize blockchain service
     const blockchainService = new BlockchainService(webhookService, queueService);
+    
+    // Initialize Binance service
+    const binanceService = new BinanceService();
+    
+    // Check if Binance integration is enabled
+    if (process.env.USE_BINANCE_WALLET === 'true') {
+      try {
+        // Validate Binance API credentials
+        const apiStatus = await binanceService.validateApiCredentials();
+        if (apiStatus) {
+          logger.info('Binance API integration enabled and credentials validated successfully');
+        } else {
+          logger.warn('Binance API integration enabled but credentials validation failed');
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.warn(`Binance API validation failed: ${errorMessage}`);
+      }
+    } else {
+      logger.info('Binance API integration is disabled. Using local HD wallet.');
+    }
     
     // Initialize transaction monitor service
     try {

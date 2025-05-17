@@ -4,12 +4,16 @@
 
 // Configuration
 const AUTH_CONFIG = {
-    apiBaseUrl: '/api/v1',
+    apiBaseUrl: 'http://localhost:3000/api/v1',
     tokenName: 'jwt_token',
     userDataName: 'user_data',
     tokenExpiry: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
     minPasswordLength: 8,
-    passwordStrengthRegex: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
+    passwordStrengthRegex: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/,
+    refreshTokenName: 'refresh_token',
+    tokenRefreshThreshold: 15 * 60 * 1000, // 15 minutes in milliseconds before expiry to refresh
+    loginRedirectPath: 'dashboard.html',
+    logoutRedirectPath: 'login.html'
 };
 
 /**
@@ -37,7 +41,7 @@ async function loginUser(email, password, remember = false) {
         
         // Handle non-200 responses
         if (!response.ok) {
-            const errorData = await response.json();
+    console.log(response);        const errorData = await response.json();
             throw new Error(errorData.message || 'Login failed');
         }
         
@@ -81,7 +85,7 @@ async function registerUser(userData) {
         
         // Handle non-200 responses
         if (!response.ok) {
-            const errorData = await response.json();
+    console.log(response);        const errorData = await response.json();
             throw new Error(errorData.message || 'Registration failed');
         }
         
@@ -196,6 +200,74 @@ function logout() {
     localStorage.removeItem(AUTH_CONFIG.tokenName);
     localStorage.removeItem(`${AUTH_CONFIG.tokenName}_expiry`);
     localStorage.removeItem(AUTH_CONFIG.userDataName);
+    localStorage.removeItem(AUTH_CONFIG.refreshTokenName);
+    
+    // Redirect to login page
+    window.location.href = AUTH_CONFIG.logoutRedirectPath;
+}
+
+/**
+ * Refresh authentication token
+ * @returns {Promise<boolean>} - Whether token was refreshed successfully
+ */
+async function refreshToken() {
+    try {
+        const refreshToken = localStorage.getItem(AUTH_CONFIG.refreshTokenName);
+        if (!refreshToken) return false;
+        
+        // Call refresh token API
+        const response = await fetch(`${AUTH_CONFIG.apiBaseUrl}/auth/refresh-token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ refreshToken })
+        });
+        
+        if (!response.ok) {
+    console.log(response);        // If refresh token is invalid, logout user
+            logout();
+            return false;
+        }
+        
+        const data = await response.json();
+        if (!data.token) {
+            logout();
+            return false;
+        }
+        
+        // Update token
+        localStorage.setItem(AUTH_CONFIG.tokenName, data.token);
+        if (data.refreshToken) {
+            localStorage.setItem(AUTH_CONFIG.refreshTokenName, data.refreshToken);
+        }
+        
+        // Update expiry
+        const expiry = Date.now() + AUTH_CONFIG.tokenExpiry;
+        localStorage.setItem(`${AUTH_CONFIG.tokenName}_expiry`, expiry.toString());
+        
+        return true;
+    } catch (error) {
+        console.error('Error refreshing token:', error);
+        return false;
+    }
+}
+
+/**
+ * Check if token needs refresh and refresh if needed
+ * @returns {Promise<boolean>} - Whether token is valid
+ */
+async function checkAndRefreshToken() {
+    if (!isAuthenticated()) return false;
+    
+    // Check if token needs refresh
+    const expiry = localStorage.getItem(`${AUTH_CONFIG.tokenName}_expiry`);
+    if (expiry && parseInt(expiry) - Date.now() < AUTH_CONFIG.tokenRefreshThreshold) {
+        // Token is about to expire, refresh it
+        return await refreshToken();
+    }
+    
+    return true;
 }
 
 /**
@@ -221,7 +293,7 @@ async function requestPasswordReset(email) {
         
         // Handle non-200 responses
         if (!response.ok) {
-            const errorData = await response.json();
+    console.log(response);        const errorData = await response.json();
             throw new Error(errorData.message || 'Password reset request failed');
         }
         
@@ -263,7 +335,7 @@ async function resetPassword(token, newPassword) {
         
         // Handle non-200 responses
         if (!response.ok) {
-            const errorData = await response.json();
+    console.log(response);        const errorData = await response.json();
             throw new Error(errorData.message || 'Password reset failed');
         }
         
@@ -303,7 +375,7 @@ async function updateUserProfile(profileData) {
         
         // Handle non-200 responses
         if (!response.ok) {
-            const errorData = await response.json();
+    console.log(response);        const errorData = await response.json();
             throw new Error(errorData.message || 'Profile update failed');
         }
         
@@ -360,7 +432,7 @@ async function changePassword(currentPassword, newPassword) {
         
         // Handle non-200 responses
         if (!response.ok) {
-            const errorData = await response.json();
+    console.log(response);        const errorData = await response.json();
             throw new Error(errorData.message || 'Password change failed');
         }
         
@@ -461,4 +533,46 @@ window.updateUserProfile = updateUserProfile;
 window.changePassword = changePassword;
 window.checkPasswordStrength = checkPasswordStrength;
 window.getPasswordStrengthText = getPasswordStrengthText;
-window.initFormValidation = initFormValidation; 
+window.initFormValidation = initFormValidation;
+window.refreshToken = refreshToken;
+window.checkAndRefreshToken = checkAndRefreshToken;
+
+// Check authentication on page load
+document.addEventListener('DOMContentLoaded', async () => {
+    // Skip auth check for public pages
+    const publicPages = ['login.html', 'register.html', 'forgot-password.html'];
+    const currentPage = window.location.pathname.split('/').pop();
+    
+    if (publicPages.some(page => currentPage.includes(page))) {
+        // On public pages, redirect to dashboard if already authenticated
+        if (isAuthenticated() && currentPage !== '') {
+            window.location.href = AUTH_CONFIG.loginRedirectPath;
+        }
+        return;
+    }
+    
+    // For protected pages, ensure user is authenticated
+    if (!isAuthenticated()) {
+        // Redirect to login
+        window.location.href = AUTH_CONFIG.logoutRedirectPath;
+        return;
+    }
+    
+    // Check if token needs refresh
+    await checkAndRefreshToken();
+    
+    // Update user info in UI if elements exist
+    const user = getCurrentUser();
+    if (user) {
+        const userNameElement = document.getElementById('user-name');
+        const userInitialsElement = document.getElementById('user-initials');
+        
+        if (userNameElement && user.firstName && user.lastName) {
+            userNameElement.textContent = `${user.firstName} ${user.lastName}`;
+        }
+        
+        if (userInitialsElement && user.firstName && user.lastName) {
+            userInitialsElement.textContent = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`;
+        }
+    }
+});
