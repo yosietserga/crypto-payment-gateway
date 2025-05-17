@@ -4,7 +4,7 @@
  */
 
 // API endpoint for authentication
-$apiUrl = 'https://eoscryptopago.com/api/v1/auth';
+$apiUrl = 'https://eoscryptopago.com/api/v1/auth/login';
 
 // User credentials
 $email = 'your-email@example.com';  // Replace with actual email
