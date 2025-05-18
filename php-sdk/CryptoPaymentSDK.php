@@ -12,16 +12,16 @@ class CryptoPaymentSDK {
     private $baseUrl;
     
     /**
-     * API key for authentication
+     * Email for authentication
      * @var string
      */
-    private $apiKey;
+    private $email;
     
     /**
-     * API secret for authentication
+     * Password for authentication
      * @var string
      */
-    private $apiSecret;
+    private $password;
     
     /**
      * JWT token for authenticated requests
@@ -38,15 +38,15 @@ class CryptoPaymentSDK {
     /**
      * Constructor
      * 
-     * @param string $baseUrl Base URL for the API (e.g. http://localhost:3000)
-     * @param string $apiKey API key for authentication
-     * @param string $apiSecret API secret for authentication
+     * @param string $baseUrl Base URL for the API (e.g. https://eoscryptopago.com)
+     * @param string $email Email for authentication
+     * @param string $password Password for authentication
      * @param bool $debug Enable debug mode
      */
-    public function __construct($baseUrl, $apiKey, $apiSecret, $debug = false) {
+    public function __construct($baseUrl, $email, $password, $debug = false) {
         $this->baseUrl = rtrim($baseUrl, '/');
-        $this->apiKey = $apiKey;
-        $this->apiSecret = $apiSecret;
+        $this->email = $email;
+        $this->password = $password;
         $this->debug = $debug;
         $this->token = null;
     }
@@ -60,14 +60,15 @@ class CryptoPaymentSDK {
     public function authenticate() {
         $endpoint = '/api/v1/auth/login';
         $data = [
-            'apiKey' => $this->apiKey,
-            'apiSecret' => $this->apiSecret
+            'email' => $this->email,
+            'password' => $this->password
         ];
         
         try {
             $response = $this->sendRequest('POST', $endpoint, $data, false);
             if (isset($response['token'])) {
                 $this->token = $response['token'];
+                $this->log('Successfully authenticated as: ' . $this->email);
                 return true;
             } else {
                 throw new Exception('Authentication failed: No token received');
@@ -291,6 +292,20 @@ class CryptoPaymentSDK {
         if (!empty($queryParams)) {
             $endpoint .= '?' . $queryParams;
         }
+        
+        return $this->sendRequest('GET', $endpoint);
+    }
+    
+    /**
+     * Get merchant profile information
+     * 
+     * @return array Merchant profile data
+     * @throws Exception If the request fails
+     */
+    public function getMerchantProfile() {
+        $this->ensureAuthenticated();
+        
+        $endpoint = '/api/v1/merchant/profile';
         
         return $this->sendRequest('GET', $endpoint);
     }

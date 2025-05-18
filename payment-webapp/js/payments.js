@@ -24,6 +24,7 @@ function initPaymentsPage() {
     const paymentsFilter = document.getElementById('payments-filter');
     const paymentsSearch = document.getElementById('payments-search');
     const paymentsDateRange = document.getElementById('payments-date-range');
+    const refreshButton = document.getElementById('refresh-payments-btn');
     
     // Load payments
     loadPayments();
@@ -47,6 +48,13 @@ function initPaymentsPage() {
         });
     }
     
+    // Set up refresh button
+    if (refreshButton) {
+        refreshButton.addEventListener('click', function() {
+            refreshData();
+        });
+    }
+    
     // Set up view payment details
     document.addEventListener('click', function(event) {
         if (event.target.closest('.view-payment-btn')) {
@@ -55,6 +63,17 @@ function initPaymentsPage() {
             viewPayment(paymentId);
         }
     });
+    
+    /**
+     * Refresh payments data
+     */
+    function refreshData() {
+        // Show a brief loading toast
+        showNotification('info', 'Refreshing payment data...');
+        
+        // Reload the payments
+        loadPayments();
+    }
     
     /**
      * Load payments from the API
@@ -79,13 +98,21 @@ function initPaymentsPage() {
             try {
                 payments = await api.getPayments(filter, search, dateRange);
                 console.log('Payments loaded:', payments);
+                
+                // Update last refresh time indicator if present
+                const lastRefreshElement = document.getElementById('last-refresh-time');
+                if (lastRefreshElement) {
+                    const now = new Date();
+                    lastRefreshElement.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+                }
             } catch (apiError) {
                 console.error('API request failed:', apiError);
                 // Use empty array as fallback - NO MOCK DATA
                 payments = [];
                 
                 // Show an error message about the API failure
-                showNotification('error', 'Could not load payments from the server: ' + (apiError.message || 'Unknown error'));
+                showNotification('error', 'Could not load payments from the server: ' + 
+                                (apiError.response?.data?.message || apiError.message || 'Unknown error'));
             }
             
             // Ensure payments is an array
@@ -112,13 +139,23 @@ function initPaymentsPage() {
                                 return; // Skip this payment
                             }
                             
-                            // Use safe default values if properties are missing
+                            // Get payment data with safe fallbacks
                             const currency = payment.currency || 'USDT';
                             const reference = payment.reference || 'Unknown';
-                            const createdAt = payment.createdAt || new Date().toISOString();
-                            const amount = payment.amount || 0;
+                            // Support both camelCase and snake_case API responses
+                            const createdAt = payment.createdAt || payment.created_at || new Date().toISOString();
+                            const expectedAmount = payment.expectedAmount || payment.expected_amount || 0;
                             const status = payment.status || 'UNKNOWN';
                             const id = payment.id || '0';
+                            
+                            // Get fiat amount and currency from metadata if available
+                            let fiatAmount = null;
+                            let fiatCurrency = null;
+                            
+                            if (payment.metadata) {
+                                fiatAmount = payment.metadata.fiatAmount || payment.metadata.fiat_amount;
+                                fiatCurrency = payment.metadata.fiatCurrency || payment.metadata.fiat_currency;
+                            }
                             
                             const row = document.createElement('tr');
                             row.innerHTML = `
@@ -132,16 +169,19 @@ function initPaymentsPage() {
                                     </div>
                                 </td>
                                 <td>
-                                    <div class="fw-semibold">${formatAmount(amount)} ${currency}</div>
-                                    ${payment.fiatAmount ? `<div class="small text-muted">≈ ${formatAmount(payment.fiatAmount)} ${payment.fiatCurrency || 'USD'}</div>` : ''}
+                                    <div class="fw-semibold">${formatAmount(expectedAmount)} ${currency}</div>
+                                    ${fiatAmount ? `<div class="small text-muted">≈ ${formatAmount(fiatAmount)} ${fiatCurrency || 'USD'}</div>` : ''}
                                 </td>
                                 <td>
-                                    <span class="badge bg-${getStatusBadgeColor(status)}">${status}</span>
+                                    <span class="badge bg-${getStatusBadgeColor(status)}">${formatStatus(status)}</span>
                                 </td>
                                 <td>
                                     <div class="d-flex gap-2 justify-content-end">
-                                        <button class="btn btn-sm btn-outline-primary view-payment-btn" data-payment-id="${id}" data-bs-toggle="modal" data-bs-target="#viewPaymentModal">
+                                        <button class="btn btn-sm btn-outline-primary view-payment-btn" data-payment-id="${id}" data-bs-toggle="modal" data-bs-target="#paymentDetailsModal">
                                             <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-secondary refresh-payment-btn" data-payment-id="${id}" title="Refresh status">
+                                            <i class="bi bi-arrow-repeat"></i>
                                         </button>
                                     </div>
                                 </td>
@@ -172,12 +212,78 @@ function initPaymentsPage() {
     }
     
     /**
+     * Set up event listener for the refresh payment status button
+     */
+    document.addEventListener('click', function(event) {
+        if (event.target.closest('.refresh-payment-btn')) {
+            const button = event.target.closest('.refresh-payment-btn');
+            const paymentId = button.dataset.paymentId;
+            refreshPaymentStatus(paymentId, button);
+        }
+    });
+    
+    /**
+     * Refresh the status of a specific payment
+     * @param {string} paymentId - The payment ID
+     * @param {HTMLElement} button - The refresh button element
+     */
+    async function refreshPaymentStatus(paymentId, button) {
+        // Show loading state on the button
+        if (button) {
+            const originalHtml = button.innerHTML;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>';
+            button.disabled = true;
+            
+            try {
+                // Call API to get the latest payment status
+                const payment = await api.getPaymentById(paymentId);
+                
+                if (!payment) {
+                    throw new Error('Could not retrieve payment data');
+                }
+                
+                // Find the parent row
+                const row = button.closest('tr');
+                if (row) {
+                    // Update the status badge
+                    const statusCell = row.querySelector('td:nth-child(3)');
+                    if (statusCell) {
+                        const status = payment.status || 'UNKNOWN';
+                        statusCell.innerHTML = `<span class="badge bg-${getStatusBadgeColor(status)}">${formatStatus(status)}</span>`;
+                    }
+                }
+                
+                showNotification('success', 'Payment status updated successfully');
+                
+            } catch (error) {
+                console.error('Error refreshing payment status:', error);
+                showNotification('error', 'Failed to refresh payment status: ' + (error.message || 'Unknown error'));
+            } finally {
+                // Restore button state
+                button.innerHTML = originalHtml;
+                button.disabled = false;
+            }
+        }
+    }
+    
+    /**
      * View payment details
      * @param {string} paymentId - The payment ID
      */
     async function viewPayment(paymentId) {
         try {
             console.log(`Viewing payment details for ID: ${paymentId}`);
+            
+            // Get modal elements
+            const modal = document.getElementById('paymentDetailsModal');
+            const modalLoader = modal?.querySelector('.modal-loader');
+            const modalContent = modal?.querySelector('.modal-content-inner');
+            const modalError = modal?.querySelector('.modal-error');
+            
+            // Show loader
+            if (modalLoader) modalLoader.classList.remove('d-none');
+            if (modalContent) modalContent.classList.add('d-none');
+            if (modalError) modalError.classList.add('d-none');
             
             // Call API to get payment details
             // ONLY using real data from the API
@@ -187,6 +293,10 @@ function initPaymentsPage() {
             // If no payment data was returned, show error and stop
             if (!payment || Object.keys(payment).length === 0) {
                 console.error('No payment data returned from API');
+                if (modalError) {
+                    modalError.classList.remove('d-none');
+                    modalError.querySelector('.error-message').textContent = 'Could not load payment details from the server.';
+                }
                 showNotification('error', 'Could not load payment details from the server.');
                 return; // Exit the function
             }
@@ -197,7 +307,7 @@ function initPaymentsPage() {
                 payment = {};
             }
             
-            // Use safe default values if properties are missing
+            // Extract payment data with proper fallbacks
             const reference = payment.reference || 'Unknown';
             const amount = payment.amount || 0;
             const currency = payment.currency || 'USDT';
@@ -207,88 +317,108 @@ function initPaymentsPage() {
             const address = payment.address || '';
             
             // Update modal with payment details
-            const modal = document.getElementById('viewPaymentModal');
+            // modal is already declared above, no need to redeclare
             if (modal) {
                 try {
-                    // Basic payment details
-                    modal.querySelector('.modal-title').textContent = `Payment ${reference}`;
-                    modal.querySelector('#view-payment-reference').textContent = reference;
-                    modal.querySelector('#view-payment-amount').textContent = `${formatAmount(amount)} ${currency}`;
-                    modal.querySelector('#view-payment-status').innerHTML = `<span class="badge bg-${getStatusBadgeColor(status)}">${status}</span>`;
-                    modal.querySelector('#view-payment-created').textContent = formatDate(createdAt);
-                    modal.querySelector('#view-payment-updated').textContent = formatDate(updatedAt);
+                    console.log('Updating modal with payment data:', payment);
                     
-                    // Address and QR code
-                    if (address) {
-                        const addressInput = modal.querySelector('#view-payment-address');
-                        if (addressInput) {
-                            addressInput.value = address;
-                            
-                            // Set up copy button
-                            const copyBtn = modal.querySelector('#copy-payment-address');
-                            if (copyBtn) {
-                                // Remove any existing event listeners to prevent duplicates
-                                const newCopyBtn = copyBtn.cloneNode(true);
-                                copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
-                                
-                                newCopyBtn.addEventListener('click', function() {
-                                    addressInput.select();
-                                    document.execCommand('copy');
-                                    
-                                    // Show success notification
-                                    showNotification('success', 'Address copied to clipboard');
-                                    
-                                    // Change button icon temporarily
-                                    const originalIcon = newCopyBtn.innerHTML;
-                                    newCopyBtn.innerHTML = '<i class="bi bi-check"></i>';
-                                    setTimeout(() => {
-                                        newCopyBtn.innerHTML = originalIcon;
-                                    }, 2000);
-                                });
-                            }
-                            
-                            // Generate QR code if library is loaded
-                            const qrContainer = modal.querySelector('#view-payment-qr-code');
-                            if (qrContainer && typeof QRCode !== 'undefined') {
-                                qrContainer.innerHTML = '';
-                                try {
-                                    new QRCode(qrContainer, {
-                                        text: address,
-                                        width: 160,
-                                        height: 160,
-                                        colorDark: '#000000',
-                                        colorLight: '#ffffff',
-                                        correctLevel: QRCode.CorrectLevel.H
-                                    });
-                                } catch (qrError) {
-                                    console.error('QR code generation error:', qrError);
-                                    qrContainer.innerHTML = '<div class="text-muted">Could not generate QR code</div>';
-                                }
-                            }
-                        }
+                    // Basic payment details
+                    modal.querySelector('.modal-title').textContent = `Payment Details`;
+                    modal.querySelector('#modal-payment-id').textContent = payment.id || 'Unknown';
+                    modal.querySelector('#modal-reference').textContent = payment.metadata.reference || 'Unknown';
+                    modal.querySelector('#modal-created-date').textContent = formatDate(payment.createdAt || new Date());
+                    modal.querySelector('#modal-status').innerHTML = `<span class="badge bg-${getStatusBadgeColor(status)}">${formatStatus(status)}</span>`;
+                    
+                    // Amount details
+                    modal.querySelector('#modal-amount').textContent = `${formatAmount(payment.expectedAmount || 0)} ${payment.currency || 'Unknown'}`;
+                    modal.querySelector('#modal-network').textContent = payment.network || 'BEP20';
+                    
+                    // Transaction hash and confirmations
+                    if (payment.transactionHash) {
+                        modal.querySelector('#modal-tx-hash').textContent = payment.transactionHash;
+                        modal.querySelector('#modal-tx-hash').parentElement.classList.remove('d-none');
+                    } else {
+                        modal.querySelector('#modal-tx-hash').parentElement.classList.add('d-none');
                     }
                     
-                    // Transaction details
-                    const txDetails = modal.querySelector('#view-payment-tx-details');
-                    if (txDetails) {
-                        if (payment.transactionId) {
-                            txDetails.classList.remove('d-none');
-                            modal.querySelector('#view-payment-tx-id').textContent = payment.transactionId;
-                            modal.querySelector('#view-payment-confirmations').textContent = payment.confirmations || '0';
-                            
-                            // Set up blockchain explorer link
-                            const explorerLink = modal.querySelector('#view-payment-explorer-link');
-                            if (explorerLink) {
-                                if (payment.explorerUrl) {
-                                    explorerLink.href = payment.explorerUrl;
-                                    explorerLink.classList.remove('d-none');
+                    if (payment.confirmations) {
+                        modal.querySelector('#modal-confirmations').textContent = `${payment.confirmations}/12`;
+                        modal.querySelector('#modal-confirmations').parentElement.classList.remove('d-none');
+                    } else {
+                        modal.querySelector('#modal-confirmations').parentElement.classList.add('d-none');
+                    }
+                    
+                    // Payment address
+                    if (payment.address) {
+                        modal.querySelector('#modal-address').textContent = payment.address;
+                        
+                        // Generate QR code
+                        const qrContainer = modal.querySelector('#modal-qr-code');
+                        if (qrContainer) {
+                            qrContainer.innerHTML = '';
+                            try {
+                                // First check if QRCode lib is available globally
+                                if (typeof qrcode === 'function') {
+                                    // Using qrcode-generator library
+                                    const typeNumber = 0;
+                                    const errorCorrectionLevel = 'L';
+                                    const qr = qrcode(typeNumber, errorCorrectionLevel);
+                                    qr.addData(payment.address);
+                                    qr.make();
+                                    
+                                    const img = document.createElement('img');
+                                    img.src = qr.createDataURL(4);
+                                    img.alt = 'Payment QR Code';
+                                    img.className = 'img-thumbnail';
+                                    img.style.width = '150px';
+                                    
+                                    qrContainer.appendChild(img);
                                 } else {
-                                    explorerLink.classList.add('d-none');
+                                    // Fallback - create a simple QR code link
+                                    const link = document.createElement('a');
+                                    link.href = `https://chart.googleapis.com/chart?chs=150x150&cht=qr&chl=${encodeURIComponent(payment.address)}`;
+                                    link.target = '_blank';
+                                    link.innerHTML = `<img src="https://chart.googleapis.com/chart?chs=150x150&cht=qr&chl=${encodeURIComponent(payment.address)}" alt="Payment QR Code" class="img-thumbnail" style="width: 150px;">`;                                 
+                                    qrContainer.appendChild(link);
                                 }
+                            } catch (qrError) {
+                                console.error('QR code generation error:', qrError);
+                                qrContainer.innerHTML = '<div class="text-muted">Could not generate QR code</div>';
                             }
-                        } else {
-                            txDetails.classList.add('d-none');
                         }
+                    } else {
+                        // Hide address section if no address
+                        const addressSection = modal.querySelector('#modal-address').parentElement;
+                        if (addressSection) addressSection.classList.add('d-none');
+                    }
+                    
+                    // Additional Information
+                    // Callback URL
+                    if (payment.callbackUrl) {
+                        modal.querySelector('#modal-callback-url').textContent = payment.callbackUrl;
+                        modal.querySelector('#modal-callback-url').parentElement.classList.remove('d-none');
+                    } else {
+                        modal.querySelector('#modal-callback-url').parentElement.classList.add('d-none');
+                    }
+                    
+                    // Callback status
+                    if (payment.callbackStatus) {
+                        const callbackStatusElem = modal.querySelector('#modal-callback-status');
+                        const statusClass = payment.callbackStatus === 'success' ? 'bg-success' : 'bg-danger';
+                        const statusText = payment.callbackStatus.charAt(0).toUpperCase() + payment.callbackStatus.slice(1);
+                        callbackStatusElem.innerHTML = `<span class="badge ${statusClass}">${statusText}</span>`;
+                        callbackStatusElem.parentElement.classList.remove('d-none');
+                    } else {
+                        modal.querySelector('#modal-callback-status').parentElement.classList.add('d-none');
+                    }
+                    
+                    // Metadata
+                    if (payment.metadata && Object.keys(payment.metadata).length > 0) {
+                        const metadataJson = JSON.stringify(payment.metadata, null, 2);
+                        modal.querySelector('#modal-metadata pre').textContent = metadataJson;
+                        modal.querySelector('#modal-metadata').parentElement.classList.remove('d-none');
+                    } else {
+                        modal.querySelector('#modal-metadata').parentElement.classList.add('d-none');
                     }
                 } catch (uiError) {
                     console.error('Error updating UI with payment details:', uiError);
@@ -307,15 +437,65 @@ function initPaymentsPage() {
      * @returns {string} - Bootstrap color class
      */
     function getStatusBadgeColor(status) {
-        const colors = {
-            'pending': 'warning',
-            'completed': 'success',
-            'confirmed': 'success',
-            'failed': 'danger',
-            'expired': 'secondary',
-            'default': 'secondary'
-        };
-        return colors[status.toLowerCase()] || colors.default;
+        switch (status.toUpperCase()) {
+            case 'COMPLETED':
+            case 'CONFIRMED':
+            case 'SUCCESS':
+                return 'success';
+            case 'PENDING':
+            case 'IN_PROGRESS':
+            case 'AWAITING_PAYMENT':
+            case 'PROCESSING':
+                return 'warning';
+            case 'FAILED':
+            case 'EXPIRED':
+            case 'CANCELLED':
+                return 'danger';
+            default:
+                return 'secondary';
+        }
+    }
+
+    /**
+     * Format payment status for display
+     * @param {string} status - Payment status from API
+     * @returns {string} Formatted status string
+     */
+    function formatStatus(status) {
+        if (!status) return 'Unknown';
+        
+        // Convert to uppercase for consistency in switch statement
+        const upperStatus = status.toUpperCase();
+        
+        // Format status for display
+        switch (upperStatus) {
+            case 'AWAITING_PAYMENT':
+                return 'Awaiting Payment';
+            case 'IN_PROGRESS':
+                return 'In Progress';
+            case 'PROCESSING':
+                return 'Processing';
+            case 'COMPLETED':
+                return 'Completed';
+            case 'CONFIRMED':
+                return 'Confirmed';
+            case 'CANCELLED':
+                return 'Cancelled';
+            case 'EXPIRED':
+                return 'Expired';
+            case 'FAILED':
+                return 'Failed';
+            default:
+                // Convert snake_case or camelCase to Title Case
+                return status
+                    .replace(/_/g, ' ')
+                    .replace(/([A-Z])/g, ' $1')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .split(' ')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                    .join(' ');
+        }
     }
     
     /**

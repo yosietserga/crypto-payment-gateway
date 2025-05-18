@@ -310,17 +310,7 @@ class BinanceAPI {
         }
     }
     
-    /**
-     * Get mock balances for testing when API fails
-     * @returns {Array} - Array of mock balance objects
-     */
-    getMockBalances() {
-        return [
-            { asset: 'BTC', free: '0.00125000', locked: '0.00000000', fiatValue: 75.25 },
-            { asset: 'ETH', free: '0.05230000', locked: '0.00100000', fiatValue: 120.35 },
-            { asset: 'USDT', free: '235.42000000', locked: '0.00000000', fiatValue: 235.42 },
-        ];
-    }
+    // Mock methods removed as per requirement
     
     /**
      * Get deposit history from Binance API
@@ -338,101 +328,26 @@ class BinanceAPI {
     }
     
     /**
-     * Get mock deposits for testing when API fails
-     * @returns {Array} - Array of mock deposit objects
-     */
-    getMockDeposits() {
-        const now = Date.now();
-        return [
-            { 
-                id: '12345678',
-                amount: '0.05000000',
-                coin: 'BTC',
-                network: 'BTC',
-                status: 1, // Success
-                address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
-                txId: '0x89f26809446cc47346a40a9319c21181e3355b86ea853f5df320d1d0a0b3e5f5',
-                insertTime: now - 86400000, // 1 day ago
-                type: 'deposit'
-            },
-            { 
-                id: '12345677',
-                amount: '0.50000000',
-                coin: 'ETH',
-                network: 'ETH',
-                status: 1, // Success
-                address: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
-                txId: '0x7b95476f9b8714cce4497f5100eff343534c55b83887e33f79dd5c6788ddd4fd',
-                insertTime: now - 172800000, // 2 days ago
-                type: 'deposit'
-            },
-            { 
-                id: '12345676',
-                amount: '100.00000000',
-                coin: 'USDT',
-                network: 'TRC20',
-                status: 0, // Pending
-                address: 'TJ9YMQDgmHhQ5B3p9reNUKqFwVNnwskPcU',
-                txId: '0x6b5ed0d89275cd14424151c5480e3e20df893f6b4a47e2648cc9a656cc86e317',
-                insertTime: now - 3600000, // 1 hour ago
-                type: 'deposit'
-            }
-        ];
-    }
-    
-    /**
      * Get withdrawal history
      * @param {Object} options - Filter options
      * @returns {Promise<Array>} - Array of withdrawal objects
      */
     async getWithdrawals(options = {}) {
-        // FIXED: Directly return mock data without API calls
-        console.log('Using mock withdrawals data');
-        return this.getMockWithdrawals();
+        console.log('Fetching real withdrawal history from Binance API');
+        try {
+            const response = await this.makeAuthRequest('/sapi/v1/capital/withdraw/history', {
+                params: {
+                    ...options,
+                    limit: 20 // Default limit of 20 records
+                }
+            });
+            return response;
+        } catch (error) {
+            console.error('Error fetching withdrawals:', error);
+            throw error;
+        }
     }
     
-    /**
-     * Get mock withdrawal data
-     * @returns {Array} - Mock withdrawal records
-     */
-    getMockWithdrawals() {
-        const now = Date.now();
-        return [
-            { 
-                id: 'WB45678',
-                amount: '0.01000000',
-                coin: 'BTC',
-                network: 'BTC',
-                status: 6, // Completed
-                address: '3FZbgi29cpjq2GjdwV8eyHuJJnkLtktZc5',
-                txId: '0xf8d421a80eae290fa2552cc7c84521f626f62f5e18caec157f4ba70dda9a3088',
-                applyTime: now - 259200000, // 3 days ago
-                type: 'withdrawal'
-            },
-            { 
-                id: 'WB45677',
-                amount: '1.25000000',
-                coin: 'ETH',
-                network: 'ETH',
-                status: 4, // Processing
-                address: '0x742d35Cc6634C0532925a3b844Bc454e4438f44e',
-                txId: '',
-                applyTime: now - 43200000, // 12 hours ago
-                type: 'withdrawal'
-            },
-            { 
-                id: 'WB45676',
-                amount: '250.00000000',
-                coin: 'USDT',
-                network: 'TRC20',
-                status: 6, // Completed
-                address: 'TJ9YMQDgmHhQ5B3p9reNUKqFwVNnwskPcU',
-                txId: '0xb4d8d7c327489a223c14f33943033d5d2bb818998883c4fd1b4d0a4aa54c2b12',
-                applyTime: now - 604800000, // 7 days ago
-                type: 'withdrawal'
-            }
-        ];
-    }
     
     /**
      * Create a withdrawal
@@ -440,25 +355,15 @@ class BinanceAPI {
      * @returns {Promise<Object>} - Created withdrawal object
      */
     async createWithdrawal(withdrawalData) {
+        console.log('Sending withdrawal request to Binance API');
         try {
-            // This would use the real Binance API endpoint for withdrawals
-            // Real endpoint: /sapi/v1/capital/withdraw/apply
-            
-            // For demo purposes, return a mock successful withdrawal
-            const mockWithdrawal = {
-                id: 'WB' + Math.floor(Math.random() * 1000000),
-                amount: withdrawalData.amount,
-                coin: withdrawalData.coin,
-                network: withdrawalData.network,
-                address: withdrawalData.address,
-                status: 2, // Awaiting Approval
-                txId: '',
-                applyTime: Date.now(),
-                type: 'withdrawal'
-            };
-            
-            console.log('Mock withdrawal created:', mockWithdrawal);
-            return mockWithdrawal;
+            // Use the real Binance API endpoint for withdrawals
+            const response = await this.makeAuthRequest('/sapi/v1/capital/withdraw/apply', {
+                method: 'POST',
+                data: withdrawalData
+            });
+            console.log('Withdrawal created:', response);
+            return response;
         } catch (error) {
             console.error('Error creating withdrawal:', error);
             throw error;
@@ -470,64 +375,18 @@ class BinanceAPI {
      * @returns {Promise<Array>} - Array of payment request objects
      */
     async getPaymentRequests() {
+        console.log('Fetching payment requests from API');
         try {
-            // There is no direct Binance API for payment requests
-            // This would need to be implemented on your own backend
-            // For demo purposes, return mock payment requests
-            return this.getMockPaymentRequests();
+            // Use custom API endpoint for payment requests
+            // This assumes your backend has implemented this endpoint
+            const response = await this.makeAuthRequest('/sapi/v1/payment/requests', {
+                method: 'GET'
+            });
+            return Array.isArray(response) ? response : [];
         } catch (error) {
             console.error('Error fetching payment requests:', error);
-            // Return mock data for demonstration
-            return this.getMockPaymentRequests();
+            throw error;
         }
-    }
-    
-    /**
-     * Get mock payment requests
-     * @returns {Array} - Mock payment request records
-     */
-    getMockPaymentRequests() {
-        const now = Date.now();
-        return [
-            {
-                id: 'PR78945',
-                asset: 'BTC',
-                amount: '0.00350000',
-                status: 'completed',
-                description: 'Website subscription',
-                customer: {
-                    name: 'John Doe',
-                    email: 'john@example.com'
-                },
-                createdAt: now - 518400000, // 6 days ago
-                completedAt: now - 486000000, // 5.5 days ago,
-            },
-            {
-                id: 'PR78946',
-                asset: 'ETH',
-                amount: '0.15000000',
-                status: 'pending',
-                description: 'Product purchase',
-                customer: {
-                    name: 'Jane Smith',
-                    email: 'jane@example.com'
-                },
-                createdAt: now - 86400000, // 1 day ago
-            },
-            {
-                id: 'PR78947',
-                asset: 'USDT',
-                amount: '125.00000000',
-                status: 'expired',
-                description: 'Consulting services',
-                customer: {
-                    name: 'Michael Johnson',
-                    email: 'michael@example.com'
-                },
-                createdAt: now - 604800000, // 7 days ago
-                expiredAt: now - 432000000 // 5 days ago
-            }
-        ];
     }
     
     /**

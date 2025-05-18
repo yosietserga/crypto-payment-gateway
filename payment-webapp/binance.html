@@ -414,10 +414,92 @@
     <script src="js/app.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/payment-api.js"></script>
-    <script src="js/binance-real.js"></script>
-    <script src="js/binance-ui-real.js"></script>
-    <script src="js/binance-methods-real.js"></script>
+    <script src="js/binance.js"></script>
     <script>
+        // Initialize the Binance API
+        const binanceApi = new BinanceAPI();
+
+        // Set up event listeners for API key form
+        document.addEventListener('DOMContentLoaded', function() {
+            // Save API keys button
+            const saveApiKeysBtn = document.getElementById('save-api-keys-btn');
+            if (saveApiKeysBtn) {
+                saveApiKeysBtn.addEventListener('click', function() {
+                    saveApiKeys();
+                });
+            }
+
+            // Configure API keys button
+            const configureBtn = document.getElementById('configure-binance-btn');
+            if (configureBtn) {
+                configureBtn.addEventListener('click', function() {
+                    openConfigureModal();
+                });
+            }
+        });
+
+        // Function to open the configure API keys modal
+        function openConfigureModal() {
+            const modal = new bootstrap.Modal(document.getElementById('configure-api-modal'));
+            modal.show();
+        }
+
+        // Function to save API keys
+        async function saveApiKeys() {
+            try {
+                const apiKeyInput = document.getElementById('api-key');
+                const apiSecretInput = document.getElementById('api-secret');
+                
+                // Validate inputs
+                if (!apiKeyInput || !apiKeyInput.value.trim()) {
+                    alert('Please enter your Binance API Key');
+                    return;
+                }
+                
+                if (!apiSecretInput || !apiSecretInput.value.trim()) {
+                    alert('Please enter your Binance API Secret');
+                    return;
+                }
+                
+                const apiKey = apiKeyInput.value.trim();
+                const apiSecret = apiSecretInput.value.trim();
+                
+                // Show loading state
+                const saveBtn = document.getElementById('save-api-keys-btn');
+                saveBtn.disabled = true;
+                saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span> Saving...';
+                
+                // Save the API keys
+                const success = binanceApi.saveApiKeys(apiKey, apiSecret);
+                
+                if (success) {
+                    // Close the modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('configure-api-modal'));
+                    if (modal) modal.hide();
+                    
+                    // Show success message
+                    alert('API keys saved successfully. The page will reload to apply changes.');
+                    
+                    // Reload the page after a brief delay
+                    setTimeout(() => {
+                        window.location.reload();
+                    }, 1000);
+                } else {
+                    throw new Error('Failed to save API keys');
+                }
+            } catch (error) {
+                console.error('Error saving API keys:', error);
+                alert('Error saving API keys: ' + error.message);
+            } finally {
+                // Reset button state
+                const saveBtn = document.getElementById('save-api-keys-btn');
+                if (saveBtn) {
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = 'Save & Connect';
+                }
+            }
+        }
+        
         // Mobile menu toggle
         document.getElementById('menu-toggle').addEventListener('click', function() {
             document.getElementById('sidebar').classList.add('show');

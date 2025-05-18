@@ -51,6 +51,12 @@
                         </a>
                     </li>
                     <li class="sidebar-menu-item">
+                        <a href="binance.html" class="sidebar-menu-link">
+                            <i class="bi bi-currency-exchange"></i>
+                            <span>Binance</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
                         <a href="webhooks.html" class="sidebar-menu-link">
                             <i class="bi bi-hdd-network"></i>
                             <span>Webhooks</span>
@@ -224,6 +230,11 @@
                                                 Notify me when payment is received
                                             </label>
                                         </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="callback-url" class="form-label">Callback URL</label>
+                                        <input type="url" class="form-control" id="callback-url" name="callback-url" placeholder="https://your-website.com/payment-complete">
+                                        <div class="form-text">URL to redirect users after payment is completed</div>
                                     </div>
                                 </div>
                             </div>

@@ -51,6 +51,12 @@
                         </a>
                     </li>
                     <li class="sidebar-menu-item">
+                        <a href="binance.html" class="sidebar-menu-link">
+                            <i class="bi bi-currency-exchange"></i>
+                            <span>Binance</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
                         <a href="webhooks.html" class="sidebar-menu-link">
                             <i class="bi bi-hdd-network"></i>
                             <span>Webhooks</span>
@@ -132,37 +138,53 @@
                 <!-- Filters and Search -->
                 <div class="card mb-4">
                     <div class="card-body">
-                        <div class="row g-3">
-                            <div class="col-md-4">
+                        <form id="payouts-filter-form" class="row g-3">
+                            <div class="col-md-3">
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                    <input type="text" class="form-control" id="payout-search" placeholder="Search payouts...">
+                                    <input type="text" class="form-control" id="filter-search" placeholder="Search by ID, hash, address...">
                                 </div>
                             </div>
-                            <div class="col-md-3">
-                                <select class="form-select" id="status-filter">
-                                    <option value="">All Statuses</option>
+                            <div class="col-md-2">
+                                <select class="form-select" id="filter-status">
+                                    <option value="all">All Statuses</option>
                                     <option value="pending">Pending</option>
+                                    <option value="submitted">Submitted</option>
                                     <option value="processing">Processing</option>
                                     <option value="completed">Completed</option>
+                                    <option value="confirmed">Confirmed</option>
                                     <option value="failed">Failed</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
-                                <select class="form-select" id="date-filter">
-                                    <option value="7">Last 7 days</option>
-                                    <option value="30">Last 30 days</option>
-                                    <option value="90">Last 3 months</option>
-                                    <option value="365">Last year</option>
-                                    <option value="custom">Custom range</option>
+                            <div class="col-md-2">
+                                <select class="form-select" id="filter-currency">
+                                    <option value="all">All Currencies</option>
+                                    <option value="USDT">USDT</option>
+                                    <option value="BTC">BTC</option>
+                                    <option value="ETH">ETH</option>
+                                    <option value="BNB">BNB</option>
+                                    <option value="BUSD">BUSD</option>
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <button class="btn btn-outline-secondary w-100" id="export-btn">
-                                    <i class="bi bi-download me-1"></i> Export
-                                </button>
+                                <select class="form-select" id="filter-date-range">
+                                    <option value="7d">Last 7 days</option>
+                                    <option value="1d">Last 24 hours</option>
+                                    <option value="30d">Last 30 days</option>
+                                    <option value="90d">Last 3 months</option>
+                                </select>
                             </div>
-                        </div>
+                            <div class="col-md-3">
+                                <div class="d-flex gap-2">
+                                    <button type="submit" class="btn btn-primary flex-grow-1">
+                                        <i class="bi bi-funnel me-1"></i> Apply Filters
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" id="export-btn">
+                                        <i class="bi bi-download"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
                     </div>
                 </div>
 

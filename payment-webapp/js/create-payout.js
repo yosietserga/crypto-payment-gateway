@@ -22,6 +22,7 @@ const elements = {
     payoutDescription: document.getElementById('payoutDescription'),
     memo: document.getElementById('memo'),
     webhookUrl: document.getElementById('webhookUrl'),
+    callbackUrl: document.getElementById('callbackUrl'),
     networkFee: document.querySelector('input[name="network-fee"]:checked'),
     createPayoutBtn: document.getElementById('createPayoutBtn'),
     formErrors: document.getElementById('form-errors')
@@ -228,10 +229,11 @@ async function handleCreatePayout(event) {
     // Get form data
     const payoutData = {
         amount: parseFloat(elements.payoutAmount.value),
-        destinationAddress: elements.recipientAddress.value.trim(),
+        recipientAddress: elements.recipientAddress.value.trim(),
         currency: elements.payoutCurrency ? elements.payoutCurrency.value.trim() : 'USDT',
         network: 'BSC', // BSC network is required and validated by the server
         webhookUrl: elements.webhookUrl ? elements.webhookUrl.value.trim() : 'https://example.com/webhook',
+
         metadata: {
             description: elements.payoutDescription ? elements.payoutDescription.value.trim() : '',
             memo: elements.memo ? elements.memo.value.trim() : '',
@@ -267,38 +269,107 @@ async function handleCreatePayout(event) {
         }, 1500);
         
     } catch (error) {
-        // Show error message
+        // Log the error for debugging
         console.error('Payout creation error:', error);
         
-        // Extract more meaningful error message if available
+        // Extract meaningful error information
+        let errorTitle = 'Payout Creation Failed';
         let errorMessage = error.message || 'Failed to create payout';
+        let detailedError = error.details || '';
+        let actionButton = null;
         
-        // Check for specific error patterns in the message
-        if (errorMessage.includes('Insufficient balance')) {
-            // Highlight insufficient balance error
-            errorMessage = `<strong>Insufficient Balance:</strong> You don't have enough funds to complete this payout. Please deposit funds or reduce the payout amount.`;
-        } else if (errorMessage.includes('validation')) {
-            // Format validation errors for better readability
-            errorMessage = `<strong>Validation Error:</strong> ${errorMessage.replace('Validation error:', '')}`;
-        } else if (errorMessage.includes('network')) {
-            // Network-related errors
-            errorMessage = `<strong>Network Error:</strong> There was a problem with the selected network. Please try again or select a different network.`;
+        // Customize error message based on the type of error
+        if (errorMessage.includes('Binance API authentication') || errorMessage.includes('Invalid API-key')) {
+            errorTitle = 'API Authentication Error';
+            errorMessage = 'The system cannot authenticate with Binance. This is likely due to invalid API keys or IP restrictions.';
+            detailedError = 'To fix this issue, please update your Binance API keys in the system settings and ensure that your IP address is whitelisted in your Binance account settings.';
+            
+            // Provide an action button to go to API settings
+            actionButton = {
+                text: 'Go to Binance Settings',
+                action: () => window.location.href = 'binance.html'
+            };
+        } else if (errorMessage.includes('Insufficient balance')) {
+            errorTitle = 'Insufficient Balance';
+            errorMessage = 'You don\'t have enough funds to complete this payout.';
+            detailedError = 'Please deposit funds to your account or reduce the payout amount.';
+        } else if (errorMessage.includes('Merchant account is not active')) {
+            errorTitle = 'Account Status Error';
+            errorMessage = 'Your merchant account is not active.';
+            detailedError = 'Please contact support to activate your account or check your account status in settings.';
         }
         
-        // Display the error message
+        // Show the error modal with the customized information
+        showErrorModal(errorTitle, errorMessage, detailedError, actionButton);
+        
+        // Also update the form error section for visibility
         if (elements.formErrors) {
-            elements.formErrors.innerHTML = errorMessage;
+            elements.formErrors.innerHTML = `<strong>${errorTitle}:</strong> ${errorMessage}`;
             elements.formErrors.classList.remove('d-none');
             elements.formErrors.classList.add('alert-danger');
-            
-            // Scroll to error message
-            elements.formErrors.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
         
         // Re-enable button
         elements.createPayoutBtn.disabled = false;
         elements.createPayoutBtn.innerHTML = 'Create Payout';
     }
+}
+
+/**
+ * Shows an error modal with customized information
+ * @param {string} title - Error title
+ * @param {string} message - Main error message
+ * @param {string} details - Technical details about the error
+ * @param {Object} actionButton - Optional button configuration {text, action}
+ */
+function showErrorModal(title, message, details, actionButton) {
+    // Get modal elements
+    const modal = document.getElementById('errorModal');
+    if (!modal) return;
+    
+    // Set modal content
+    document.getElementById('error-title').textContent = title || 'Error';
+    document.getElementById('error-message').textContent = message || 'An error occurred while processing your request.';
+    
+    // Handle technical details
+    const detailsContainer = document.getElementById('error-details');
+    const detailsContent = document.getElementById('error-technical-details');
+    
+    if (details && detailsContent) {
+        detailsContent.textContent = details;
+        detailsContainer.style.display = 'block';
+    } else if (detailsContainer) {
+        detailsContainer.style.display = 'none';
+    }
+    
+    // Handle action button
+    const actionBtn = document.getElementById('error-action-btn');
+    if (actionButton && actionBtn) {
+        actionBtn.textContent = actionButton.text || 'Action';
+        actionBtn.style.display = 'block';
+        
+        // Remove existing event listeners
+        const newActionBtn = actionBtn.cloneNode(true);
+        actionBtn.parentNode.replaceChild(newActionBtn, actionBtn);
+        
+        // Add new event listener
+        newActionBtn.addEventListener('click', () => {
+            // Close the modal
+            const bsModal = bootstrap.Modal.getInstance(modal);
+            if (bsModal) bsModal.hide();
+            
+            // Execute the action
+            if (typeof actionButton.action === 'function') {
+                actionButton.action();
+            }
+        });
+    } else if (actionBtn) {
+        actionBtn.style.display = 'none';
+    }
+    
+    // Show the modal
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
 }
 
 /**

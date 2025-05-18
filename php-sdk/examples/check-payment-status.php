@@ -6,13 +6,13 @@
 // Include the SDK
 require_once '../CryptoPaymentSDK.php';
 
-// Set API credentials
-$apiUrl = 'http://localhost:3000'; // Change to your API server URL
-$apiKey = 'your-api-key';
-$apiSecret = 'your-api-secret';
+// Set API connection details
+$apiUrl = 'https://eoscryptopago.com'; // Change to your API server URL
+$email = 'merchant@example.com'; // Replace with actual merchant email
+$password = 'your-secure-password'; // Replace with actual password
 
-// Initialize the SDK
-$sdk = new CryptoPaymentSDK($apiUrl, $apiKey, $apiSecret, true);
+// Initialize the SDK with debug mode enabled
+$sdk = new CryptoPaymentSDK($apiUrl, $email, $password, true);
 
 // Get payment ID from command line argument or last payment
 $paymentId = isset($argv[1]) ? $argv[1] : null;
@@ -31,13 +31,17 @@ try {
     $sdk->authenticate();
     
     // Get payment details
-    $payment = $sdk->getPaymentById($paymentId);
+    $response = $sdk->getPaymentById($paymentId);
+    
+    // Extract the payment data from the response
+    $payment = $response['data'];
     
     // Display payment information
     echo "Payment ID: " . $payment['id'] . "\n";
     echo "Address: " . $payment['address'] . "\n";
     echo "Expected Amount: " . $payment['expectedAmount'] . " " . $payment['currency'] . "\n";
     echo "Status: " . $payment['status'] . "\n";
+    echo "Created At: " . $payment['createdAt'] . "\n";
     
     if (isset($payment['receivedAmount'])) {
         echo "Received Amount: " . $payment['receivedAmount'] . " " . $payment['currency'] . "\n";
@@ -47,10 +51,10 @@ try {
         echo "Confirmations: " . $payment['confirmations'] . "\n";
     }
     
-    if (isset($payment['txIds']) && !empty($payment['txIds'])) {
+    if (isset($payment['transactions']) && !empty($payment['transactions'])) {
         echo "Transaction IDs:\n";
-        foreach ($payment['txIds'] as $txId) {
-            echo "- " . $txId . "\n";
+        foreach ($payment['transactions'] as $transaction) {
+            echo "- " . $transaction['txId'] . " (" . $transaction['status'] . ")\n";
         }
     }
     

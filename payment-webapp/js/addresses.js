@@ -75,38 +75,56 @@ function initAddressesPage() {
                 // Clear existing rows
                 addressesTableBody.innerHTML = '';
                 
-                if (addresses.length === 0) {
+                // Ensure addresses is an array
+                const addressList = Array.isArray(addresses) ? addresses : [];
+                
+                if (addressList.length === 0) {
                     // Show empty state
                     if (addressesEmpty) addressesEmpty.classList.remove('d-none');
+                    if (addressesTable) addressesTable.classList.add('d-none');
                 } else {
                     // Add rows for each address
-                    addresses.forEach(address => {
+                    addressList.forEach(address => {
                         const row = document.createElement('tr');
+                        
+                        // Format expiry date if it exists
+                        const expiryDate = address.expiryDate ? formatDate(address.expiryDate) : 'Never';
+                        
+                        // Format the address for display
+                        const displayAddress = address.address ? 
+                            `${address.address.substring(0, 10)}...${address.address.substring(address.address.length - 10)}` : 
+                            'Unknown';
+                            
                         row.innerHTML = `
                             <td>
                                 <div class="d-flex align-items-center">
-                                    <div class="currency-icon currency-icon-${address.cryptocurrency.toLowerCase()} me-2"></div>
                                     <div>
-                                        <div class="fw-semibold">${address.label}</div>
-                                        <div class="small text-muted">${address.address.substring(0, 10)}...${address.address.substring(address.address.length - 10)}</div>
+                                        <div class="fw-semibold">${address.label || 'Unnamed Address'}</div>
+                                        <div class="small text-muted">${displayAddress}</div>
                                     </div>
                                 </div>
                             </td>
                             <td>
-                                <span class="badge bg-${getCryptoBadgeColor(address.cryptocurrency)}">${address.cryptocurrency}</span>
+                                <span class="badge bg-${getCryptoBadgeColor(address.currency || address.cryptocurrency)}">${address.currency || address.cryptocurrency || 'USDT'}</span>
+                            </td>
+                            <td>
+                                <span class="text-muted">${address.network || 'BEP20'}</span>
                             </td>
                             <td>
                                 <div class="text-muted small">${formatDate(address.createdAt)}</div>
                             </td>
                             <td>
-                                <span class="badge bg-${getStatusBadgeColor(address.status)}">${address.status}</span>
+                                <div class="text-muted small">${expiryDate}</div>
+                            </td>
+                            <td>
+                                <span class="badge bg-${getStatusBadgeColor(address.status)}">${formatStatus(address.status)}</span>
                             </td>
                             <td>
                                 <div class="d-flex gap-2 justify-content-end">
-                                    <button class="btn btn-sm btn-outline-primary view-address-btn" data-address-id="${address.id}" data-bs-toggle="modal" data-bs-target="#viewAddressModal">
+                                    <button class="btn btn-sm btn-outline-primary view-address-btn" data-address-id="${address.id}" data-bs-toggle="modal" data-bs-target="#addressDetailsModal">
                                         <i class="bi bi-eye"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-outline-danger delete-address-btn" data-address-id="${address.id}" data-address-label="${address.label}">
+                                    <button class="btn btn-sm btn-outline-danger delete-address-btn" data-address-id="${address.id}" data-address-label="${address.label || displayAddress}">
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </div>
@@ -237,18 +255,67 @@ function initAddressesPage() {
     }
     
     /**
-     * Get badge color for address status
+     * Format status string for display
+     * @param {string} status - Status value from API
+     * @returns {string} - Formatted status for display
+     */
+    function formatStatus(status) {
+        if (!status) return 'Unknown';
+        
+        // Convert to uppercase for consistency in switch statement
+        const upperStatus = status.toUpperCase();
+        
+        // Format status for display
+        switch (upperStatus) {
+            case 'ACTIVE':
+                return 'Active';
+            case 'PENDING':
+                return 'Pending';
+            case 'EXPIRED':
+                return 'Expired';
+            case 'ARCHIVED':
+                return 'Archived';
+            case 'INACTIVE':
+                return 'Inactive';
+            case 'VALID':
+                return 'Valid';
+            case 'INVALID':
+                return 'Invalid';
+            case 'PROCESSING':
+                return 'Processing';
+            default:
+                // Convert snake_case or camelCase to Title Case
+                return status
+                    .replace(/_/g, ' ')
+                    .replace(/([A-Z])/g, ' $1')
+                    .replace(/^./, str => str.toUpperCase());
+        }
+    }
+    
+    /**
+     * Get status badge color based on status
      * @param {string} status - Address status
      * @returns {string} - Bootstrap color class
      */
     function getStatusBadgeColor(status) {
-        const colors = {
-            'active': 'success',
-            'inactive': 'secondary',
-            'expired': 'danger',
-            'default': 'secondary'
-        };
-        return colors[status.toLowerCase()] || colors.default;
+        const statusUpper = (status || '').toUpperCase();
+        
+        switch (statusUpper) {
+            case 'ACTIVE':
+            case 'VALID':
+                return 'success';
+            case 'PENDING':
+            case 'PROCESSING':
+                return 'warning';
+            case 'EXPIRED':
+            case 'INVALID':
+                return 'danger';
+            case 'ARCHIVED':
+            case 'INACTIVE':
+                return 'secondary';
+            default:
+                return 'info';
+        }
     }
     
     /**

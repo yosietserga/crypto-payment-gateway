@@ -9,8 +9,92 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-okaidia.min.css">
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/dashboard.css">
+    <style>
+        .api-section {
+            margin-bottom: 3rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #eee;
+        }
+        .endpoint {
+            margin-bottom: 2.5rem;
+            padding: 1.5rem;
+            border-radius: 8px;
+            background-color: #f8f9fa;
+        }
+        .endpoint h3 {
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+        .endpoint .badge {
+            margin-right: 0.5rem;
+            font-size: 0.8rem;
+            padding: 0.35rem 0.65rem;
+        }
+        .endpoint-path {
+            font-family: 'Courier New', monospace;
+            background-color: #212529;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            display: inline-block;
+        }
+        .endpoint .method {
+            font-weight: 600;
+            margin-right: 1rem;
+        }
+        .method-get { color: #0d6efd; }
+        .method-post { color: #198754; }
+        .method-put { color: #fd7e14; }
+        .method-delete { color: #dc3545; }
+        .nav-pills .nav-link.active {
+            background-color: #343a40;
+        }
+        .code-tabs {
+            margin-top: 1rem;
+        }
+        .code-tabs .nav-link {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+        .tab-content {
+            background-color: #272822;
+            border-radius: 0 0 6px 6px;
+        }
+        pre {
+            margin: 0;
+            padding: 1rem;
+            font-size: 0.85rem;
+            background-color: transparent !important;
+        }
+        .params-table th,
+        .params-table td {
+            padding: 0.5rem;
+        }
+        .anchor-link {
+            opacity: 0.5;
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+            text-decoration: none;
+        }
+        .anchor-link:hover {
+            opacity: 1;
+        }
+        .response-example {
+            background-color: #f0f0f0;
+            padding: 1rem;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            margin-top: 1rem;
+        }
+        .sidebar-menu-item a.active {
+            background-color: #343a40;
+        }
+    </style>
 </head>
 <body class="dashboard-body">
     <div class="dashboard-container">
@@ -48,6 +132,159 @@
                         <a href="addresses.html" class="sidebar-menu-link">
                             <i class="bi bi-credit-card"></i>
                             <span>Addresses</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="binance.html" class="sidebar-menu-link">
+                            <i class="bi bi-currency-exchange"></i>
+                            <span>Binance</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="webhooks.html" class="sidebar-menu-link">
+                            <i class="bi bi-hdd-network"></i>
+                            <span>Webhooks</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="api-keys.html" class="sidebar-menu-link">
+                            <i class="bi bi-key"></i>
+                            <span>API Keys</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="api-docs.html" class="sidebar-menu-link active">
+                            <i class="bi bi-file-code"></i>
+                            <span>API Docs</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-divider"></li>
+                    <li class="sidebar-menu-item">
+                        <a href="settings.html" class="sidebar-menu-link">
+                            <i class="bi bi-gear"></i>
+                            <span>Settings</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="#" class="sidebar-menu-link" id="logout-link">
+                            <i class="bi bi-box-arrow-right"></i>
+                            <span>Logout</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="content-header">
+                <button class="menu-toggle d-md-none" id="menu-toggle" aria-label="Toggle menu">
+                    <i class="bi bi-list"></i>
+                </button>
+                
+                <div class="header-actions">
+                    <div class="dropdown me-3">
+                        <button class="btn btn-sm btn-outline-primary dropdown-toggle" type="button" id="quickActionBtn" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-plus-lg"></i> Quick Actions
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="quickActionBtn">
+                            <li><a class="dropdown-item" href="create-payment.html"><i class="bi bi-wallet2 me-2"></i>Create Payment</a></li>
+                            <li><a class="dropdown-item" href="create-payout.html"><i class="bi bi-send me-2"></i>Create Payout</a></li>
+                            <li><a class="dropdown-item" href="generate-address.html"><i class="bi bi-credit-card me-2"></i>Generate Address</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item active" href="api-docs.html"><i class="bi bi-code-slash me-2"></i>API Documentation</a></li>
+                        </ul>
+                    </div>
+                    
+                    <div class="dropdown">
+                        <button class="user-dropdown" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <div class="user-avatar">
+                                <span id="user-initials">JD</span>
+                            </div>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                            <li class="dropdown-user-info">
+                                <div class="fw-semibold" id="user-name">John Doe</div>
+                                <div class="small text-muted" id="user-email">john@example.com</div>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="profile.html"><i class="bi bi-person me-2"></i>Profile</a></li>
+                            <li><a class="dropdown-item" href="settings.html"><i class="bi bi-gear me-2"></i>Settings</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" id="header-logout"><i class="bi bi-box-arrow-right me-2"></i>Logout</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </header>
+
+            <div class="content-body">
+                <div class="page-title-wrapper mb-4">
+                    <h1 class="page-title">API Documentation</h1>
+                    <p class="text-muted">Comprehensive guide to integrate with our Crypto Payment Gateway API</p>
+                </div>
+                
+                <div class="row">
+                    <div class="col-md-3 mb-4">
+                        <!-- API Navigation -->
+                        <div class="card">
+                            <div class="card-body p-0">
+                                <div class="list-group list-group-flush" id="api-nav">
+                                    <a href="#authentication" class="list-group-item list-group-item-action">Authentication</a>
+                                    <a href="#payments" class="list-group-item list-group-item-action">Payments</a>
+                                    <a href="#payouts" class="list-group-item list-group-item-action">Payouts</a>
+                                    <a href="#addresses" class="list-group-item list-group-item-action">Addresses</a>
+                                    <a href="#webhooks" class="list-group-item list-group-item-action">Webhooks</a>
+                                    <a href="#api-keys" class="list-group-item list-group-item-action">API Keys</a>
+                                    <a href="#merchant" class="list-group-item list-group-item-action">Merchant</a>
+                                    <a href="#binance" class="list-group-item list-group-item-action">Binance</a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Base URL Info -->
+                        <div class="card mt-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Base URL</h5>
+                                <div class="alert alert-dark">
+                                    <code>https://eoscryptopago.com/api/v1</code>
+                                </div>
+                                <h6 class="mt-3">Sandbox</h6>
+                                <div class="alert alert-info">
+                                    <code>https://eoscryptopago.com/sandbox/api/v1</code>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+            <nav class="sidebar-nav">
+                <ul class="sidebar-menu">
+                    <li class="sidebar-menu-item">
+                        <a href="dashboard.html" class="sidebar-menu-link">
+                            <i class="bi bi-speedometer2"></i>
+                            <span>Dashboard</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="payments.html" class="sidebar-menu-link">
+                            <i class="bi bi-wallet2"></i>
+                            <span>Payments</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="payouts.html" class="sidebar-menu-link">
+                            <i class="bi bi-send"></i>
+                            <span>Payouts</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="addresses.html" class="sidebar-menu-link">
+                            <i class="bi bi-credit-card"></i>
+                            <span>Addresses</span>
+                        </a>
+                    </li>
+                    <li class="sidebar-menu-item">
+                        <a href="binance.html" class="sidebar-menu-link">
+                            <i class="bi bi-currency-exchange"></i>
+                            <span>Binance</span>
                         </a>
                     </li>
                     <li class="sidebar-menu-item">
@@ -179,42 +416,138 @@
                             <!-- Authentication -->
                             <div class="tab-pane fade" id="authentication" role="tabpanel" aria-labelledby="authentication-tab">
                                 <h4 class="mb-3">Authentication</h4>
-                                <p>The API uses API keys and HMAC signatures for authentication.</p>
+                                <p>The API uses JWT (JSON Web Token) authentication. First authenticate with your email and password to receive a token, then use this token for all subsequent API requests.</p>
                                 
-                                <h5 class="mt-4 mb-3">API Keys</h5>
-                                <p>You can generate API keys in the <a href="api-keys.html">API Keys</a> section of your dashboard.</p>
+                                <h5 class="mt-4 mb-3">Login Endpoint</h5>
+                                <div class="endpoint mb-4">
+                                    <div class="method method-post">POST</div>
+                                    <div class="endpoint-path">/api/v1/auth/login</div>
+                                    <p>Authenticate with email and password to receive a JWT token.</p>
+                                    
+                                    <h6 class="mt-3">Request Parameters</h6>
+                                    <div class="table-responsive">
+                                        <table class="table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Parameter</th>
+                                                    <th>Type</th>
+                                                    <th>Required</th>
+                                                    <th>Description</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td><code>email</code></td>
+                                                    <td>String</td>
+                                                    <td>Yes</td>
+                                                    <td>Your account email address</td>
+                                                </tr>
+                                                <tr>
+                                                    <td><code>password</code></td>
+                                                    <td>String</td>
+                                                    <td>Yes</td>
+                                                    <td>Your account password (min 8 characters)</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    
+                                    <h6 class="mt-3">Example Request</h6>
+                                    <ul class="nav nav-tabs" role="tablist">
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link active" id="login-curl-tab" data-bs-toggle="tab" data-bs-target="#login-curl" type="button" role="tab">cURL</button>
+                                        </li>
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link" id="login-js-tab" data-bs-toggle="tab" data-bs-target="#login-js" type="button" role="tab">JavaScript</button>
+                                        </li>
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link" id="login-php-tab" data-bs-toggle="tab" data-bs-target="#login-php" type="button" role="tab">PHP</button>
+                                        </li>
+                                    </ul>
+                                    
+                                    <div class="tab-content mt-2">
+                                        <div class="tab-pane fade show active" id="login-curl" role="tabpanel">
+<pre><code class="language-bash">curl -X POST https://eoscryptopago.com/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "merchant@example.com",
+    "password": "your-secure-password"
+  }'</code></pre>
+                                        </div>
+                                        <div class="tab-pane fade" id="login-js" role="tabpanel">
+<pre><code class="language-javascript">// Using fetch API
+const response = await fetch('https://eoscryptopago.com/api/v1/auth/login', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    email: 'merchant@example.com',
+    password: 'your-secure-password'
+  })
+});
+
+const data = await response.json();
+const token = data.token; // Save this token for future API requests</code></pre>
+                                        </div>
+                                        <div class="tab-pane fade" id="login-php" role="tabpanel">
+<pre><code class="language-php">// Using the SDK
+require_once('CryptoPaymentSDK.php');
+
+$sdk = new CryptoPaymentSDK(
+  'https://eoscryptopago.com',
+  'merchant@example.com',
+  'your-secure-password'
+);
+
+// Authenticate to receive a token
+$sdk->authenticate();
+
+// The SDK will automatically use the token for subsequent API calls</code></pre>
+                                        </div>
+                                    </div>
+                                    
+                                    <h6 class="mt-3">Example Response</h6>
+<pre><code class="language-json">{
+  "message": "Login successful",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "email": "merchant@example.com",
+    "role": "merchant",
+    "merchant": {
+      "id": "m1n2o3p4-q5r6-7890-stuv-wx1234567890",
+      "companyName": "Example Company",
+      "status": "active"
+    }
+  }
+}</code></pre>
+                                </div>
                                 
-                                <h5 class="mt-4 mb-3">Headers</h5>
-                                <p>Include the following headers with each API request:</p>
+                                <h5 class="mt-4 mb-3">Using the JWT Token</h5>
+                                <p>For all authenticated API requests, include the JWT token in the Authorization header:</p>
                                 <div class="table-responsive">
                                     <table class="table">
                                         <thead>
                                             <tr>
                                                 <th>Header</th>
+                                                <th>Value</th>
                                                 <th>Description</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             <tr>
-                                                <td><code>X-API-KEY</code></td>
-                                                <td>Your API key</td>
-                                            </tr>
-                                            <tr>
-                                                <td><code>X-TIMESTAMP</code></td>
-                                                <td>Current Unix timestamp in milliseconds</td>
-                                            </tr>
-                                            <tr>
-                                                <td><code>X-SIGNATURE</code></td>
-                                                <td>HMAC-SHA256 signature of the request</td>
+                                                <td><code>Authorization</code></td>
+                                                <td><code>Bearer {your_jwt_token}</code></td>
+                                                <td>JWT token received from the login endpoint</td>
                                             </tr>
                                         </tbody>
                                     </table>
                                 </div>
                                 
-                                <h5 class="mt-4 mb-3">Generating Signatures</h5>
-                                <p>Generate the signature by creating an HMAC-SHA256 hash of the request data, signed with your API secret.</p>
-                                <div class="bg-light p-3 rounded mb-4">
-                                    <pre><code>signature = HMAC-SHA256(timestamp + method + path + body, apiSecret)</code></pre>
+                                <div class="alert alert-info mt-4">
+                                    <i class="bi bi-info-circle me-2"></i>
+                                    <strong>Note:</strong> JWT tokens expire after 24 hours. If a token expires, simply make another login request to obtain a new token.
                                 </div>
                             </div>
                             

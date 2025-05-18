@@ -6,6 +6,9 @@
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize the payouts page
     initPayoutsPage();
+    
+    // Set up filter form event handlers
+    setupFilterHandlers();
 });
 
 /**
@@ -14,6 +17,9 @@ document.addEventListener('DOMContentLoaded', function() {
 function initPayoutsPage() {
     // Initialize the API client
     const api = new PaymentAPI();
+    
+    // Store API client in a global variable for other functions to access
+    window.paymentAPI = api;
     
     // Get elements
     const payoutsTable = document.getElementById('payouts-table');
@@ -37,9 +43,10 @@ function initPayoutsPage() {
     });
     
     /**
-     * Load payouts from the API
+     * Load payouts from the API with filtering options
+     * @param {Object} filters - Optional filters for the payouts
      */
-    async function loadPayouts() {
+    async function loadPayouts(filters = {}) {
         // Show loader
         if (payoutsLoader) payoutsLoader.classList.remove('d-none');
         if (payoutsTable) payoutsTable.classList.add('d-none');
@@ -47,10 +54,33 @@ function initPayoutsPage() {
         if (payoutsError) payoutsError.classList.add('d-none');
         
         try {
-            // Call API to get payouts - ONLY using real data, no mocks
+            // Get filter values from UI if not provided as parameters
+            if (!filters.status && document.getElementById('filter-status')) {
+                filters.status = document.getElementById('filter-status').value;
+            }
+            
+            if (!filters.dateRange && document.getElementById('filter-date-range')) {
+                filters.dateRange = document.getElementById('filter-date-range').value;
+            }
+            
+            if (!filters.search && document.getElementById('filter-search')) {
+                const searchValue = document.getElementById('filter-search').value.trim();
+                if (searchValue) {
+                    filters.search = searchValue;
+                }
+            }
+            
+            if (!filters.currency && document.getElementById('filter-currency')) {
+                const currencyValue = document.getElementById('filter-currency').value;
+                if (currencyValue !== 'all') {
+                    filters.currency = currencyValue;
+                }
+            }
+            
+            // Call API to get payouts with filters
             let payouts = [];
             try {
-                payouts = await api.getPayouts();
+                payouts = await api.getPayouts(filters);
                 console.log('Payouts loaded:', payouts);
             } catch (apiError) {
                 console.error('API request failed:', apiError);
@@ -88,7 +118,7 @@ function initPayoutsPage() {
                             // Use safe default values if properties are missing
                             const id = payout.id || 'Unknown';
                             const date = payout.createdAt || new Date().toISOString();
-                            const recipient = payout.destinationAddress || 'Unknown';
+                            const recipient = payout.recipientAddress || 'Unknown';
                             const amount = payout.amount || 0;
                             const currency = payout.currency || 'USDT';
                             const status = payout.status || 'UNKNOWN';
@@ -173,6 +203,99 @@ function initPayoutsPage() {
      * View payout details
      * @param {string} payoutId - Payout ID
      */
+    async /**
+     * Set up handlers for filter form submission
+     */
+    function setupFilterHandlers() {
+        const filterForm = document.getElementById('payouts-filter-form');
+        if (!filterForm) return;
+        
+        // Handle form submission
+        filterForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+            
+            // Get filter values
+            const filters = {
+                status: document.getElementById('filter-status')?.value || 'all',
+                currency: document.getElementById('filter-currency')?.value || 'all',
+                dateRange: document.getElementById('filter-date-range')?.value || '7d',
+                search: document.getElementById('filter-search')?.value || ''
+            };
+            
+            // Only include filters that aren't the default 'all' value
+            const apiFilters = {};
+            if (filters.status !== 'all') apiFilters.status = filters.status;
+            if (filters.currency !== 'all') apiFilters.currency = filters.currency;
+            if (filters.dateRange) apiFilters.dateRange = filters.dateRange;
+            if (filters.search.trim()) apiFilters.search = filters.search.trim();
+            
+            // Load payouts with filters
+            loadPayouts(apiFilters);
+        });
+        
+        // Handle export button click
+        const exportBtn = document.getElementById('export-btn');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', function() {
+                exportPayoutsData();
+            });
+        }
+    }
+    
+    /**
+     * Export payouts data as CSV
+     */
+    function exportPayoutsData() {
+        // Get current payouts data from the table
+        const rows = [];
+        const headers = ['Payout ID', 'Date', 'Recipient', 'Amount', 'Currency', 'Status'];
+        
+        // Add table headers
+        rows.push(headers);
+        
+        // Add table data rows
+        const tableRows = document.querySelectorAll('#payouts-table-body tr:not(.skeleton-row)');
+        tableRows.forEach(row => {
+            const columns = row.querySelectorAll('td');
+            if (columns.length >= 6) {
+                const rowData = [
+                    columns[0].textContent.trim(),
+                    columns[1].textContent.trim(),
+                    columns[2].textContent.trim(),
+                    columns[3].textContent.trim(),
+                    columns[4].textContent.trim(),
+                    columns[5].textContent.trim()
+                ];
+                rows.push(rowData);
+            }
+        });
+        
+        // Convert to CSV
+        let csvContent = 'data:text/csv;charset=utf-8,';
+        rows.forEach(rowArray => {
+            // Properly handle fields with commas, quotes
+            const formattedRow = rowArray.map(field => {
+                // Escape quotes and wrap fields with commas in quotes
+                const escaped = String(field).replace(/"/g, '""');
+                return /[,"]/.test(escaped) ? `"${escaped}"` : escaped;
+            });
+            csvContent += formattedRow.join(',') + '\r\n';
+        });
+        
+        // Create download link
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement('a');
+        link.setAttribute('href', encodedUri);
+        link.setAttribute('download', `payouts-export-${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        
+        // Click the link to trigger download
+        link.click();
+        
+        // Clean up
+        document.body.removeChild(link);
+    }
+
     async function viewPayoutDetails(payoutId) {
         const modal = document.getElementById('payoutDetailsModal');
         const modalBody = modal.querySelector('.modal-body');
@@ -239,7 +362,7 @@ function initPayoutsPage() {
                 
                 // Recipient
                 const recipientElement = modal.querySelector('#payout-recipient');
-                if (recipientElement) recipientElement.textContent = payout.destinationAddress || 'Unknown';
+                if (recipientElement) recipientElement.textContent = payout.recipientAddress || 'Unknown';
                 
                 // Transaction Hash
                 const txHashElement = modal.querySelector('#payout-tx-hash');

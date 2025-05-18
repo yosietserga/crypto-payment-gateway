@@ -62,8 +62,8 @@ function initPaymentForm() {
                         },
                         // Add fiat currency to metadata instead
                         fiatCurrency: document.getElementById('payment-currency').value
-                    }
-                    // Removed callbackUrl since it's optional and causing validation errors
+                    },
+                    callbackUrl: document.getElementById('callback-url').value || ''
                 };
                 
                 // Call API to create payment address

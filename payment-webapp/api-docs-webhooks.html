@@ -1,0 +1,406 @@
+<!-- Webhooks Endpoints Section -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h2 id="webhooks">Webhooks API Endpoints</h2>
+            </div>
+            <div class="card-body">
+                <!-- Create Webhook Endpoint -->
+                <div class="endpoint">
+                    <span class="badge bg-success">POST</span>
+                    <span class="endpoint-path">/webhooks</span>
+                    <h3>Create Webhook</h3>
+                    <p>Creates a new webhook for receiving event notifications.</p>
+                    
+                    <h4 class="mt-4">Request Parameters</h4>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Parameter</th>
+                                <th>Type</th>
+                                <th>Required</th>
+                                <th>Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>url</code></td>
+                                <td>String</td>
+                                <td>Yes</td>
+                                <td>Endpoint URL to receive webhook events</td>
+                            </tr>
+                            <tr>
+                                <td><code>description</code></td>
+                                <td>String</td>
+                                <td>No</td>
+                                <td>Description of the webhook purpose</td>
+                            </tr>
+                            <tr>
+                                <td><code>events</code></td>
+                                <td>Array</td>
+                                <td>Yes</td>
+                                <td>Array of event types to subscribe to (e.g., ["payment.created", "payment.completed"])</td>
+                            </tr>
+                            <tr>
+                                <td><code>status</code></td>
+                                <td>String</td>
+                                <td>No</td>
+                                <td>Initial status (default: "active")</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <h4 class="mt-4">Example Requests</h4>
+                    
+                    <!-- cURL Example -->
+                    <div class="code-block">
+                        <div class="code-header">cURL</div>
+                        <pre class="code-content"><code>curl -X POST "https://eoscryptopago.com/api/v1/webhooks" \
+-H "Authorization: Bearer YOUR_API_KEY" \
+-H "Content-Type: application/json" \
+-d '{
+  "url": "https://your-website.com/webhook-endpoint",
+  "description": "Payment notifications webhook",
+  "events": ["payment.created", "payment.completed", "payment.failed"],
+  "status": "active"
+}'</code></pre>
+                    </div>
+                    
+                    <!-- JavaScript Example -->
+                    <div class="code-block">
+                        <div class="code-header">JavaScript</div>
+                        <pre class="code-content"><code>const createWebhook = async () => {
+  try {
+    const response = await fetch('https://eoscryptopago.com/api/v1/webhooks', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer YOUR_API_KEY',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        url: 'https://your-website.com/webhook-endpoint',
+        description: 'Payment notifications webhook',
+        events: ['payment.created', 'payment.completed', 'payment.failed'],
+        status: 'active'
+      })
+    });
+    
+    const data = await response.json();
+    console.log('Webhook created:', data);
+    return data;
+  } catch (error) {
+    console.error('Error creating webhook:', error);
+    throw error;
+  }
+};</code></pre>
+                    </div>
+                    
+                    <!-- PHP Example -->
+                    <div class="code-block">
+                        <div class="code-header">PHP</div>
+                        <pre class="code-content"><code>function createWebhook() {
+    $apiKey = 'YOUR_API_KEY';
+    $url = 'https://eoscryptopago.com/api/v1/webhooks';
+    
+    $data = [
+        'url' => 'https://your-website.com/webhook-endpoint',
+        'description' => 'Payment notifications webhook',
+        'events' => ['payment.created', 'payment.completed', 'payment.failed'],
+        'status' => 'active'
+    ];
+    
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $apiKey,
+        'Content-Type: application/json'
+    ]);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($httpCode == 201) {
+        return json_decode($response, true);
+    } else {
+        $error = json_decode($response, true);
+        throw new Exception('Error creating webhook: ' . 
+                           ($error['message'] ?? 'Unknown error'));
+    }
+}</code></pre>
+                    </div>
+                    
+                    <h4 class="mt-4">Response Example</h4>
+                    <div class="code-block">
+                        <div class="code-header">JSON Response</div>
+                        <pre class="code-content"><code>{
+  "success": true,
+  "data": {
+    "id": "wh-a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+    "url": "https://your-website.com/webhook-endpoint",
+    "description": "Payment notifications webhook",
+    "events": ["payment.created", "payment.completed", "payment.failed"],
+    "status": "active",
+    "secretKey": "whsk_123456789abcdef",
+    "createdAt": "2025-05-18T12:00:00.000Z",
+    "updatedAt": "2025-05-18T12:00:00.000Z"
+  }
+}</code></pre>
+                    </div>
+                </div>
+                
+                <!-- List Webhooks -->
+                <div class="endpoint">
+                    <span class="badge bg-primary">GET</span>
+                    <span class="endpoint-path">/webhooks</span>
+                    <h3>List Webhooks</h3>
+                    <p>Retrieves all webhooks for your account.</p>
+                    
+                    <h4 class="mt-4">Example Requests</h4>
+                    
+                    <!-- cURL Example -->
+                    <div class="code-block">
+                        <div class="code-header">cURL</div>
+                        <pre class="code-content"><code>curl -X GET "https://eoscryptopago.com/api/v1/webhooks" \
+-H "Authorization: Bearer YOUR_API_KEY"</code></pre>
+                    </div>
+                    
+                    <!-- JavaScript Example -->
+                    <div class="code-block">
+                        <div class="code-header">JavaScript</div>
+                        <pre class="code-content"><code>const getWebhooks = async () => {
+  try {
+    const response = await fetch('https://eoscryptopago.com/api/v1/webhooks', {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer YOUR_API_KEY'
+      }
+    });
+    
+    const data = await response.json();
+    console.log('Webhooks:', data);
+    return data;
+  } catch (error) {
+    console.error('Error fetching webhooks:', error);
+    throw error;
+  }
+};</code></pre>
+                    </div>
+                    
+                    <!-- PHP Example -->
+                    <div class="code-block">
+                        <div class="code-header">PHP</div>
+                        <pre class="code-content"><code>function getWebhooks() {
+    $apiKey = 'YOUR_API_KEY';
+    $url = 'https://eoscryptopago.com/api/v1/webhooks';
+    
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $apiKey
+    ]);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    
+    if ($httpCode == 200) {
+        return json_decode($response, true);
+    } else {
+        $error = json_decode($response, true);
+        throw new Exception('Error fetching webhooks: ' . 
+                           ($error['message'] ?? 'Unknown error'));
+    }
+}</code></pre>
+                    </div>
+                    
+                    <h4 class="mt-4">Response Example</h4>
+                    <div class="code-block">
+                        <div class="code-header">JSON Response</div>
+                        <pre class="code-content"><code>{
+  "success": true,
+  "data": [
+    {
+      "id": "wh-a1b2c3d4-e5f6-7890-abcd-1234567890ab",
+      "url": "https://your-website.com/webhook-endpoint",
+      "description": "Payment notifications webhook",
+      "events": ["payment.created", "payment.completed", "payment.failed"],
+      "status": "active",
+      "createdAt": "2025-05-18T12:00:00.000Z",
+      "updatedAt": "2025-05-18T12:00:00.000Z"
+    },
+    {
+      "id": "wh-b2c3d4e5-f6a7-8901-bcde-23456789abcd",
+      "url": "https://your-website.com/payout-notifications",
+      "description": "Payout notifications webhook",
+      "events": ["payout.created", "payout.completed"],
+      "status": "active",
+      "createdAt": "2025-05-15T09:30:00.000Z",
+      "updatedAt": "2025-05-15T09:30:00.000Z"
+    }
+  ]
+}</code></pre>
+                    </div>
+                </div>
+
+                <!-- Webhook Events Section -->
+                <div class="mt-5">
+                    <h3>Webhook Events</h3>
+                    <p>These are the available webhook events you can subscribe to:</p>
+                    
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Event</th>
+                                <th>Description</th>
+                                <th>Data Provided</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>payment.created</code></td>
+                                <td>Triggered when a payment address is generated</td>
+                                <td>Payment address details</td>
+                            </tr>
+                            <tr>
+                                <td><code>payment.received</code></td>
+                                <td>Triggered when a payment is detected on the blockchain</td>
+                                <td>Payment address and transaction details</td>
+                            </tr>
+                            <tr>
+                                <td><code>payment.confirmed</code></td>
+                                <td>Triggered when a payment has enough confirmations</td>
+                                <td>Payment address and transaction details</td>
+                            </tr>
+                            <tr>
+                                <td><code>payment.completed</code></td>
+                                <td>Triggered when a payment is fully completed</td>
+                                <td>Payment address and transaction details</td>
+                            </tr>
+                            <tr>
+                                <td><code>payment.expired</code></td>
+                                <td>Triggered when a payment address expires</td>
+                                <td>Payment address details</td>
+                            </tr>
+                            <tr>
+                                <td><code>payout.created</code></td>
+                                <td>Triggered when a payout is created</td>
+                                <td>Payout details</td>
+                            </tr>
+                            <tr>
+                                <td><code>payout.processing</code></td>
+                                <td>Triggered when a payout is being processed</td>
+                                <td>Payout details</td>
+                            </tr>
+                            <tr>
+                                <td><code>payout.completed</code></td>
+                                <td>Triggered when a payout is successfully completed</td>
+                                <td>Payout details with transaction hash</td>
+                            </tr>
+                            <tr>
+                                <td><code>payout.failed</code></td>
+                                <td>Triggered when a payout fails</td>
+                                <td>Payout details with error information</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Webhook Security -->
+                <div class="mt-5">
+                    <h3>Webhook Security</h3>
+                    <p>Webhook payloads are signed with a secret key to verify they came from our system. You should validate the signature before processing the webhook.</p>
+                    
+                    <h4 class="mt-4">Signature Verification Examples</h4>
+                    
+                    <!-- JavaScript Example -->
+                    <div class="code-block">
+                        <div class="code-header">JavaScript (Node.js)</div>
+                        <pre class="code-content"><code>const crypto = require('crypto');
+const express = require('express');
+const app = express();
+
+// Middleware to parse JSON body
+app.use(express.json());
+
+app.post('/webhook-endpoint', (req, res) => {
+  const payload = req.body;
+  const signature = req.headers['x-eoscryptopago-signature'];
+  const webhookSecret = 'whsk_123456789abcdef'; // Your webhook secret key
+  
+  // Verify signature
+  const hmac = crypto.createHmac('sha256', webhookSecret);
+  const expectedSignature = hmac.update(JSON.stringify(payload)).digest('hex');
+  
+  if (signature !== expectedSignature) {
+    console.error('Invalid webhook signature');
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+  
+  // Process the webhook event
+  const eventType = payload.event;
+  
+  switch(eventType) {
+    case 'payment.completed':
+      // Handle completed payment
+      console.log('Payment completed:', payload.data);
+      break;
+    case 'payout.completed':
+      // Handle completed payout
+      console.log('Payout completed:', payload.data);
+      break;
+    // Handle other event types...
+  }
+  
+  // Acknowledge receipt of the webhook
+  res.status(200).json({ received: true });
+});</code></pre>
+                    </div>
+                    
+                    <!-- PHP Example -->
+                    <div class="code-block">
+                        <div class="code-header">PHP</div>
+                        <pre class="code-content"><code>function verifyWebhookSignature($payload, $signature, $secretKey) {
+    $expectedSignature = hash_hmac('sha256', $payload, $secretKey);
+    return hash_equals($expectedSignature, $signature);
+}
+
+// Get the request payload
+$payload = file_get_contents('php://input');
+$signature = $_SERVER['HTTP_X_EOSCRYPTOPAGO_SIGNATURE'] ?? '';
+$webhookSecret = 'whsk_123456789abcdef'; // Your webhook secret key
+
+if (!verifyWebhookSignature($payload, $signature, $webhookSecret)) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Invalid signature']);
+    exit;
+}
+
+// Process the webhook
+$data = json_decode($payload, true);
+$eventType = $data['event'];
+
+switch($eventType) {
+    case 'payment.completed':
+        // Handle completed payment
+        error_log('Payment completed: ' . json_encode($data['data']));
+        break;
+    case 'payout.completed':
+        // Handle completed payout
+        error_log('Payout completed: ' . json_encode($data['data']));
+        break;
+    // Handle other event types...
+}
+
+// Acknowledge receipt of the webhook
+http_response_code(200);
+echo json_encode(['received' => true]);</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

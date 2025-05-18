@@ -7,8 +7,12 @@
 
 class PaymentAPI {
     constructor(apiBaseUrl, apiKey) {
-        // Use the correct API base URL, as error showed we need to use /api/v1 not /merchant
-        this.apiBaseUrl = apiBaseUrl || 'http://localhost:3000/api/v1';
+        // Set the API base URL based on current location
+        // For local testing, use http://localhost:3000/api/v1
+        // For production, use the current domain with /api/v1
+        this.apiBaseUrl = apiBaseUrl || (window.location.hostname === 'localhost' ? 
+            'http://localhost:3000/api/v1' : 
+            window.location.origin + '/api/v1');
         this.apiKey = apiKey;
         
         // Set up default headers with content type and API key if provided
@@ -20,6 +24,7 @@ class PaymentAPI {
         if (this.apiKey) {
             this.headers['X-API-Key'] = this.apiKey;
         }
+        
         this.supportedCurrencies = ['USDT', 'BTC', 'ETH', 'BNB', 'BUSD', 'XRP', 'ADA', 'SOL', 'DOT'];
         this.supportedNetworks = {
             'USDT': ['BEP20', 'ERC20', 'TRC20'],
@@ -32,6 +37,7 @@ class PaymentAPI {
             'SOL': ['Solana'],
             'DOT': ['Polkadot']
         };
+        
         this.preferredCurrency = localStorage.getItem('preferredCurrency') || 'USDT';
         this.preferredNetwork = localStorage.getItem('preferredNetwork') || 'BEP20';
         this.isDarkMode = localStorage.getItem('darkMode') === 'true' || false;
@@ -40,1358 +46,654 @@ class PaymentAPI {
         this.exchangeRatesCache = null;
         this.transactionHistory = JSON.parse(localStorage.getItem('transactionHistory')) || [];
         this.favoriteAddresses = JSON.parse(localStorage.getItem('favoriteAddresses')) || [];
-    }
-
-    /**
-     * Generate a new payment address
-     * @param {Object} paymentData - Payment data object
-     * @param {string} paymentData.metadata.reference - Order reference ID
-     * @param {string} paymentData.expectedAmount - Payment amount
-     * @param {string} paymentData.currency - Currency code (e.g., 'USDT')
-     * @param {string} paymentData.callbackUrl - Webhook callback URL
-     * @returns {Promise<Object>} - Payment address data
-     */
-    /**
-     * Get auth headers for API requests
-     * @returns {Object} - Headers with authentication token
-     */
-    getAuthHeaders() {
-        const headers = {
-            'Content-Type': 'application/json'
+        
+        // Define API endpoints for various resources
+        this.endpoints = {
+            auth: '/auth',
+            addresses: '/merchant/payment-addresses', // Updated to include merchant prefix
+            payments: '/payments', // Updated to include merchant prefix
+            payouts: '/payouts', // Updated to include merchant prefix
+            transactions: '/transactions',
+            webhooks: '/webhooks',
+            apiKeys: '/api-keys',
+            settings: '/settings',
+            exchangeRates: '/exchange-rates'
         };
         
-        const token = localStorage.getItem('jwt_token');
-        if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-        } else {
-            console.warn('No JWT token found in localStorage! Authentication will fail.');
-            // Redirect to login page if not authenticated and on protected page
-            if (!window.location.pathname.includes('login.html') &&
-                !window.location.pathname.includes('register.html') &&
-                !window.location.pathname.includes('forgot-password.html')) {
-                window.location.href = 'login.html';
-            }
-        }
-        
-        return headers;
+        // Initialize the authentication token from localStorage
+        this.updateAuthToken();
     }
     
     /**
-     * Make an API request with automatic token refresh on 401 errors
-     * @param {string} endpoint - API endpoint
-     * @param {Object} options - Fetch options
-     * @param {boolean} retry - Whether this is a retry attempt after token refresh
-     * @returns {Promise<Object>} - API response object (not parsed JSON)
+     * Update the authentication token from localStorage
      */
-    async request(endpoint, options = {}, retry = false) {
+    updateAuthToken() {
+        const token = localStorage.getItem('jwt_token');
+        if (token) {
+            this.authToken = token;
+        } else {
+            this.authToken = null;
+        }
+    }
+    
+    /**
+     * Make an API request with proper authentication
+     * @param {string} method - HTTP method (GET, POST, PUT, DELETE)
+     * @param {string} endpoint - API endpoint
+     * @param {Object} data - Data to send in the request body (for POST/PUT requests)
+     * @returns {Promise<Object>} Response from the API
+     */
+    async apiRequest(method, endpoint, data = null) {
+        const url = this.apiBaseUrl + endpoint;
+        
+        // Update auth token before making request
+        this.updateAuthToken();
+        
+        const headers = { ...this.headers };
+        
+        // Add JWT auth token if available
+        if (this.authToken) {
+            headers['Authorization'] = `Bearer ${this.authToken}`;
+        }
+        
+        const options = {
+            method,
+            headers
+        };
+        
+        // Add body for POST/PUT requests
+        if (data && (method === 'POST' || method === 'PUT')) {
+            options.body = JSON.stringify(data);
+        }
+        
         try {
-            // Set default method
-            if (!options.method) {
-                options.method = 'GET';
-            }
-            
-            // Set headers
-            options.headers = {
-                ...options.headers || {},
-                ...this.getAuthHeaders()
-            };
-            
-            // Make request with full URL (adding base URL if endpoint doesn't include it)
-            const url = endpoint.startsWith('http') ? endpoint : `${this.apiBaseUrl}${endpoint}`;
-            console.log('Making API request to:', url);
             const response = await fetch(url, options);
             
-            // Handle 401 Unauthorized - Token might be expired
-            if (response.status === 401 && !retry && typeof window.checkAndRefreshToken === 'function') {
-                console.log('Received 401, attempting to refresh token...');
-                const refreshed = await window.checkAndRefreshToken();
-                
-                if (refreshed) {
-                    console.log('Token refreshed, retrying request...');
-                    // Retry the request with fresh token
-                    return this.request(endpoint, options, true);
-                } else {
-                    console.error('Token refresh failed, redirecting to login');
-                    window.location.href = 'login.html';
-                    throw new Error('Authentication failed. Please login again.');
-                }
+            // Log the request for debugging
+            console.log(`API ${method} ${endpoint}: ${response.status}`);
+            
+            // Parse response
+            const contentType = response.headers.get('Content-Type');
+            let responseData;
+            
+            if (contentType && contentType.includes('application/json')) {
+                responseData = await response.json();
+            } else {
+                responseData = await response.text();
             }
             
-            // Return the raw response - we'll parse it in the calling methods
-            return response;
+            // Check for error status codes
+            if (!response.ok) {
+                console.error(`API Request Error [${method} ${endpoint}]:`, responseData);
+                
+                // Create a custom error with detailed information from the API response
+                const errorMessage = responseData.error && responseData.error.message
+                    ? responseData.error.message
+                    : `API request failed with status ${response.status}`;
+                
+                const error = new Error(errorMessage);
+                error.status = response.status;
+                error.responseData = responseData;
+                error.details = responseData.error?.details || '';
+                throw error;
+            }
+            
+            return {
+                status: response.status,
+                data: responseData
+            };
         } catch (error) {
-            console.error(`API request failed: ${error.message}`);
-            console.error(`API ${options.method} ${endpoint} error:`, error);
+            console.error(`API Request Error [${method} ${endpoint}]:`, error);
             throw error;
         }
     }
     
     /**
-     * Get the authentication token
-     * @returns {string|null} - JWT token or null if not authenticated
+     * Get all webhooks
+     * @returns {Promise<Array>} List of webhooks
      */
-    getToken() {
-        return localStorage.getItem('jwt_token');
-    }
-    
-    /**
-     * Check if the user is authenticated
-     * @returns {boolean} - Whether the user is authenticated
-     */
-    isAuthenticated() {
-        return !!this.getToken();
-    }
-    
-    /**
-     * Get all payouts with optional filtering
-     * @param {string} status - Filter by status ('all', 'pending', 'completed', 'failed')
-     * @param {number} page - Page number
-     * @param {number} limit - Number of items per page
-     * @returns {Promise<Array>} - List of payouts
-     */
-    async getPayouts(status = 'all', page = 1, limit = 20) {
+    async getWebhooks() {
         try {
-            // Construct URL with parameters
-            let url = `/transactions?type=PAYOUT&page=${page}&limit=${limit}`;
-            
-            // Add status filter if not 'all'
-            if (status && status !== 'all') {
-                url += `&status=${status.toUpperCase()}`;
-            }
-            
-            console.log('Fetching payouts with URL:', url);
-            
-            try {
-                // Make the API request
-                const response = await this.request(url);
-                
-                // Check if the response was successful
-                if (!response.ok) {
-                    console.log('Error response from getPayouts:', response);
-                    let errorMessage;
-                    try {
-                        // Try to get error details if available
-                        const errorText = await response.text();
-                        console.error('API error response:', errorText);
-                        
-                        // Try to parse the error as JSON if possible
-                        try {
-                            const errorJson = JSON.parse(errorText);
-                            if (errorJson.error && errorJson.error.message) {
-                                errorMessage = errorJson.error.message;
-                            } else {
-                                errorMessage = errorText;
-                            }
-                        } catch (jsonError) {
-                            errorMessage = errorText || response.statusText;
-                        }
-                    } catch (textError) {
-                        errorMessage = response.statusText || 'Unknown error';
-                    }
-                    throw new Error('Failed to fetch payouts: ' + errorMessage);
-                }
-                
-                // Parse the JSON response
-                let responseData;
-                try {
-                    responseData = await response.json();
-                    console.log('Payouts API response:', responseData);
-                } catch (jsonError) {
-                    console.error('Failed to parse JSON response:', jsonError);
-                    throw new Error('Failed to fetch payouts: Invalid response format');
-                }
-                
-                // Check if the API returned success and has the expected structure
-                if (responseData.success && responseData.data) {
-                    // The API might return payouts in data.payouts, not directly in data
-                    if (responseData.data.payouts && Array.isArray(responseData.data.payouts)) {
-                        return responseData.data.payouts;
-                    } else if (Array.isArray(responseData.data)) {
-                        return responseData.data;
-                    } else {
-                        console.warn('Unexpected API response structure:', responseData);
-                        return [];
-                    }
-                } else {
-                    console.warn('Unexpected API response structure:', responseData);
-                    return [];
-                }
-            } catch (fetchError) {
-                console.error('Error in request:', fetchError);
-                throw fetchError;
-            }
+            const response = await this.apiRequest('GET', this.endpoints.webhooks);
+            // Make sure we always return an array
+            return Array.isArray(response.data) ? response.data : [];
         } catch (error) {
-            console.error('Error in getPayouts:', error);
-            // Return empty array instead of throwing to prevent UI breakdown
-            return [];
+            console.error('Error fetching webhooks:', error);
+            throw error;
+        }
+    }
+    
+    // Mock methods removed as per requirement
+    
+    /**
+     * Create a webhook
+     * @param {Object} webhookData - Data for the webhook to create
+     * @returns {Promise<Object>} Created webhook
+     */
+    async createWebhook(webhookData) {
+        try {
+            // Validate webhook data
+            if (!webhookData.url) {
+                throw new Error('Webhook URL is required');
+            }
+            
+            if (!webhookData.events || webhookData.events.length === 0) {
+                throw new Error('At least one event must be specified');
+            }
+            
+            // Ensure URL is well-formed
+            try {
+                new URL(webhookData.url);
+            } catch (e) {
+                throw new Error('Invalid webhook URL format');
+            }
+            
+            const response = await this.apiRequest('POST', this.endpoints.webhooks, webhookData);
+            console.info('Webhook created successfully:', webhookData.url);
+            return response.data;
+        } catch (error) {
+            console.error('Error creating webhook:', error);
+            // Enhance error message with more details if possible
+            if (error.response && error.response.data && error.response.data.message) {
+                throw new Error(`API error: ${error.response.data.message}`);
+            }
+            throw error;
         }
     }
     
     /**
-     * Get payout by ID
-     * @param {string} payoutId - Payout ID
-     * @returns {Promise<Object>} - Payout data
+     * Get a webhook by ID
+     * @param {string} webhookId - ID of the webhook to get
+     * @returns {Promise<Object>} Webhook details
+     */
+    async getWebhookById(webhookId) {
+        try {
+            const response = await this.apiRequest('GET', `${this.endpoints.webhooks}/${webhookId}`);
+            return response.data;
+        } catch (error) {
+            console.error(`Error fetching webhook ${webhookId}:`, error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Update a webhook
+     * @param {string} webhookId - ID of the webhook to update
+     * @param {Object} webhookData - New webhook data
+     * @returns {Promise<Object>} Updated webhook
+     */
+    async updateWebhook(webhookId, webhookData) {
+        try {
+            const response = await this.apiRequest('PUT', `${this.endpoints.webhooks}/${webhookId}`, webhookData);
+            return response.data;
+        } catch (error) {
+            console.error(`Error updating webhook ${webhookId}:`, error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Delete a webhook
+     * @param {string} webhookId - ID of the webhook to delete
+     * @returns {Promise<boolean>} Success status
+     */
+    async deleteWebhook(webhookId) {
+        try {
+            if (!webhookId) {
+                throw new Error('Webhook ID is required');
+            }
+            await this.apiRequest('DELETE', `${this.endpoints.webhooks}/${webhookId}`);
+            return true;
+        } catch (error) {
+            console.error('Error deleting webhook:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Get all API keys
+     * @returns {Promise<Array>} List of API keys
+     */
+    async getApiKeys() {
+        try {
+            const response = await this.apiRequest('GET', this.endpoints.apiKeys);
+            return response.data.data || [];
+        } catch (error) {
+            console.error('Error fetching API keys:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Create a new API key
+     * @param {Object} apiKeyData - Data for the API key to create
+     * @param {string} apiKeyData.description - Description or name for the API key
+     * @param {boolean} apiKeyData.readOnly - Whether the API key is read-only
+     * @param {string} apiKeyData.ipRestrictions - Optional IP restrictions (comma-separated)
+     * @param {Object} apiKeyData.permissions - Permissions for the API key
+     * @returns {Promise<Object>} Created API key with sensitive data
+     */
+    async createApiKey(apiKeyData) {
+        try {
+            const response = await this.apiRequest('POST', this.endpoints.apiKeys, apiKeyData);
+            return response.data.data;
+        } catch (error) {
+            console.error('Error creating API key:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Delete (revoke) an API key
+     * @param {string} apiKeyId - ID of the API key to revoke
+     * @returns {Promise<Object>} Response data
+     */
+    async deleteApiKey(apiKeyId) {
+        try {
+            if (!apiKeyId) {
+                throw new Error('API key ID is required');
+            }
+            const response = await this.apiRequest('DELETE', `${this.endpoints.apiKeys}/${apiKeyId}`);
+            return response.data;
+        } catch (error) {
+            console.error('Error revoking API key:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Update an API key
+     * @param {string} apiKeyId - ID of the API key to update
+     * @param {Object} updateData - New data for the API key
+     * @returns {Promise<Object>} Updated API key
+     */
+    async updateApiKey(apiKeyId, updateData) {
+        try {
+            if (!apiKeyId) {
+                throw new Error('API key ID is required');
+            }
+            const response = await this.apiRequest('PUT', `${this.endpoints.apiKeys}/${apiKeyId}`, updateData);
+            return response.data.data;
+        } catch (error) {
+            console.error('Error updating API key:', error);
+            throw error;
+        }
+    }
+    
+
+    
+    /**
+     * Get all payments
+     * @param {Object} filters - Optional filters for payments
+     * @returns {Promise<Array>} List of payments
+     */
+    async getPayments(filters = {}) {
+        try {
+            // Build query string from filters
+            const queryParams = new URLSearchParams();
+            
+            for (const [key, value] of Object.entries(filters)) {
+                if (value !== undefined && value !== null) {
+                    queryParams.append(key, value);
+                }
+            }
+            
+            const queryString = queryParams.toString();
+            const endpoint = this.endpoints.payments + (queryString ? `?${queryString}` : '');
+            
+            const response = await this.apiRequest('GET', endpoint);
+            // Make sure we always return an array
+            return Array.isArray(response.data) ? response.data : [];
+        } catch (error) {
+            console.error('Error fetching payments:', error);
+            throw error;
+        }
+    }
+    
+    // Mock methods removed as per requirement
+    
+    /**
+     * Get all payouts
+     * @param {Object} filters - Optional filters for payouts
+     * @returns {Promise<Array>} List of payouts
+     */
+    async getPayouts(filters = {}) {
+        try {
+            // Build query string from filters
+            const queryParams = new URLSearchParams();
+            
+            for (const [key, value] of Object.entries(filters)) {
+                if (value !== undefined && value !== null) {
+                    queryParams.append(key, value);
+                }
+            }
+            
+            const queryString = queryParams.toString();
+            const endpoint = this.endpoints.payouts + (queryString ? `?${queryString}` : '');
+            
+            const response = await this.apiRequest('GET', endpoint);
+            // Make sure we always return an array
+            return Array.isArray(response.data) ? response.data : [];
+        } catch (error) {
+            console.error('Error fetching payouts:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Get a payout by ID
+     * @param {string} payoutId - ID of the payout to retrieve
+     * @returns {Promise<Object>} Payout details
      */
     async getPayoutById(payoutId) {
         try {
-            console.log(`Fetching payout details for ID: ${payoutId}`);
-            
-            try {
-                // Make the API request using our request method
-                const response = await this.request(`/transactions/${payoutId}`);
-                
-                // Check if the response was successful
-                if (!response.ok) {
-                    console.log('Error response from getPayoutById:', response);
-                    let errorMessage;
-                    try {
-                        // Try to get error details if available
-                        const errorText = await response.text();
-                        console.error('API error response:', errorText);
-                        
-                        // Try to parse the error as JSON if possible
-                        try {
-                            const errorJson = JSON.parse(errorText);
-                            if (errorJson.error && errorJson.error.message) {
-                                errorMessage = errorJson.error.message;
-                            } else {
-                                errorMessage = errorText;
-                            }
-                        } catch (jsonError) {
-                            errorMessage = errorText || response.statusText;
-                        }
-                    } catch (textError) {
-                        errorMessage = response.statusText || 'Unknown error';
-                    }
-                    throw new Error('Failed to get payout: ' + errorMessage);
-                }
-                
-                // Parse the JSON response
-                let responseData;
-                try {
-                    responseData = await response.json();
-                    console.log('Payout details API response:', responseData);
-                } catch (jsonError) {
-                    console.error('Failed to parse JSON response:', jsonError);
-                    throw new Error('Failed to get payout details: Invalid response format');
-                }
-                
-                // Check if the API returned success and has the expected structure
-                if (responseData.success && responseData.data) {
-                    // The API might return payout data in data.payout, not directly in data
-                    if (responseData.data.payout) {
-                        return responseData.data.payout;
-                    } else {
-                        return responseData.data;
-                    }
-                } else {
-                    console.warn('Unexpected API response structure:', responseData);
-                    return {};
-                }
-            } catch (fetchError) {
-                console.error('Error in request:', fetchError);
-                throw fetchError;
+            if (!payoutId) {
+                throw new Error('Payout ID is required');
             }
+            
+            const response = await this.apiRequest('GET', `${this.endpoints.payouts}/${payoutId}`);
+            return response.data;
         } catch (error) {
-            console.error('Error in getPayoutById:', error);
+            console.error(`Error fetching payout ${payoutId}:`, error);
             throw error;
         }
     }
     
     /**
      * Create a new payout
-     * @param {Object} payoutData - Payout data
-     * @param {number} payoutData.amount - Payout amount
-     * @param {string} payoutData.destinationAddress - Recipient address
-     * @param {string} payoutData.currency - Currency code (e.g., 'USDT')
-     * @param {Object} payoutData.metadata - Additional metadata
-     * @returns {Promise<Object>} - Created payout data
+     * @param {Object} payoutData - Data for the payout to create
+     * @param {number} payoutData.amount - Amount to send
+     * @param {string} payoutData.currency - Cryptocurrency for payout (e.g., 'BTC', 'ETH', 'USDT')
+     * @param {string} payoutData.network - Network for the transaction (e.g., 'BEP20', 'ERC20')
+     * @param {string} payoutData.recipientAddress - Blockchain address to send funds to
+     * @param {string} payoutData.webhookUrl - URL to notify when payout status changes
+     * @param {string} payoutData.callbackUrl - URL to redirect after payout completion
+     * @param {Object} payoutData.metadata - Additional metadata about the payout
+     * @returns {Promise<Object>} Created payout details
      */
     async createPayout(payoutData) {
         try {
-            console.log('Creating payout with data:', payoutData);
-            
-            // Ensure we have the required fields
-            if (!payoutData.amount || !payoutData.destinationAddress) {
-                throw new Error('Amount and destination address are required');
+            console.log(payoutData)
+            // Validate required fields
+            if (!payoutData.amount || isNaN(payoutData.amount)) {
+                throw new Error('Amount must be a valid number');
             }
             
-            // Format the data for the payout endpoint
-            const payoutRequest = {
+            if (!payoutData.currency) {
+                throw new Error('Currency is required');
+            }
+            
+            if (!payoutData.network) {
+                throw new Error('Network is required');
+            }
+            
+            if (!payoutData.recipientAddress) {
+                throw new Error('Recipient address is required');
+            }
+            
+            // Prepare the data for the API
+            const requestData = {
                 amount: payoutData.amount,
-                recipientAddress: payoutData.destinationAddress,
-                currency: payoutData.currency || 'USDT',
-                network: payoutData.network || 'BSC', // BSC network is required by the server
-                webhookUrl: payoutData.webhookUrl || 'https://example.com/webhook', // Provide a default URL to pass validation
+                currency: payoutData.currency,
+                network: payoutData.network,
+                recipientAddress: payoutData.recipientAddress,
+                webhookUrl: payoutData.webhookUrl || '',
+                callbackUrl: payoutData.callbackUrl || '',
                 metadata: payoutData.metadata || {}
             };
             
-            // Make the API request to the merchant payouts endpoint
-            const response = await this.request('/merchant/payouts', {
-                method: 'POST',
-                headers: this.getAuthHeaders(),
-                body: JSON.stringify(payoutRequest)
-            });
-            
-            // Check if the response was successful
-            if (!response.ok) {
-                console.log('Error response from createPayout:', response);
-                let errorMessage;
-                try {
-                    // Try to get error details if available
-                    const errorText = await response.text();
-                    console.error('API error response:', errorText);
-                    
-                    // Try to parse the error as JSON if possible
-                    try {
-                        const errorJson = JSON.parse(errorText);
-                        
-                        // Enhanced error extraction
-                        if (errorJson.error) {
-                            // If we have a stack trace, check for specific error patterns
-                            if (errorJson.error.stack) {
-                                const stackError = errorJson.error.stack.toLowerCase();
-                                
-                                // Check for common error patterns
-                                if (stackError.includes('insufficient balance')) {
-                                    // Extract the exact details about available balance
-                                    const balanceMatch = stackError.match(/required:\s*(\d+\.?\d*),\s*available:\s*(\d+\.?\d*)/i);
-                                    if (balanceMatch && balanceMatch.length >= 3) {
-                                        errorMessage = `Insufficient balance. Required: ${balanceMatch[1]}, Available: ${balanceMatch[2]}`;
-                                    } else {
-                                        errorMessage = 'Insufficient balance in your wallet to complete this payout';
-                                    }
-                                } else if (stackError.includes('invalid address')) {
-                                    errorMessage = 'The recipient address is invalid. Please check and try again.';
-                                } else {
-                                    // Use the error message if available
-                                    errorMessage = errorJson.error.message || errorJson.message || 'An error occurred';
-                                }
-                            } else {
-                                errorMessage = errorJson.error.message || errorJson.message || 'An error occurred';
-                            }
-                        } else {
-                            errorMessage = errorText;
-                        }
-                    } catch (jsonError) {
-                        // Handle non-JSON responses
-                        if (errorText.toLowerCase().includes('insufficient balance')) {
-                            errorMessage = 'Insufficient balance in your wallet to complete this payout';
-                        } else {
-                            errorMessage = errorText || response.statusText;
-                        }
-                    }
-                } catch (textError) {
-                    errorMessage = response.statusText || 'Unknown error';
-                }
-                throw new Error('Failed to create payout: ' + errorMessage);
-            }
-            
-            // Parse the JSON response
-            let responseData;
-            try {
-                responseData = await response.json();
-                console.log('Create payout API response:', responseData);
-            } catch (jsonError) {
-                console.error('Failed to parse JSON response:', jsonError);
-                throw new Error('Failed to create payout: Invalid response format');
-            }
-            
-            // Check if the API returned success and has the expected structure
-            if (responseData.success && responseData.data) {
-                // The API might return created payout in data.payout, not directly in data
-                if (responseData.data.payout) {
-                    return responseData.data.payout;
-                } else {
-                    return responseData.data;
-                }
-            } else {
-                console.warn('Unexpected API response structure:', responseData);
-                throw new Error('Unexpected API response structure');
-            }
+            // Create the payout
+            const response = await this.apiRequest('POST', this.endpoints.payouts, requestData);
+            console.info('Payout created successfully');
+            return response.data;
         } catch (error) {
             console.error('Error creating payout:', error);
+            // Extract more detailed error message if available
+            if (error.response && error.response.data && error.response.data.message) {
+                throw new Error(`API error: ${error.response.data.message}`);
+            }
             throw error;
         }
     }
-
-    async generatePaymentAddress(paymentData) {
-        try {
-            // Convert to match the API expected format
-            const apiPayload = {
-                currency: paymentData.currency,
-                expectedAmount: paymentData.amount || paymentData.expectedAmount,
-                callbackUrl: paymentData.callbackUrl,
-                metadata: paymentData.metadata || {}
-            };
-            
-            // Ensure backward compatibility
-            if (paymentData.reference && !apiPayload.metadata.reference) {
-                apiPayload.metadata.reference = paymentData.reference;
-            }
-            
-            // Use auth headers for protected endpoints
-            const authHeaders = this.getAuthHeaders();
-            
-            // Use the correct merchant endpoint for payment addresses
-            const response = await this.request('/merchant/payment-addresses', {
-                method: 'POST',
-                headers: authHeaders, // Use authentication headers
-                body: JSON.stringify(apiPayload)
-            });
-
-            if (!response.ok) {
-                console.log('Error response from generatePaymentAddress:', response);
-                let errorMessage;
-                try {
-                    // Try to get error details if available
-                    const errorText = await response.text();
-                    console.error('API error response:', errorText);
-                    
-                    // Try to parse the error as JSON if possible
-                    try {
-                        const errorJson = JSON.parse(errorText);
-                        if (errorJson.error && errorJson.error.message) {
-                            errorMessage = errorJson.error.message;
-                        } else {
-                            errorMessage = errorText;
-                        }
-                    } catch (jsonError) {
-                        errorMessage = errorText || response.statusText;
-                    }
-                } catch (textError) {
-                    errorMessage = response.statusText || 'Unknown error';
-                }
-                throw new Error('Failed to generate payment address: ' + errorMessage);
-            }
-
-            let data;
-            try {
-                data = await response.json();
-            } catch (jsonError) {
-                console.error('Failed to parse JSON response:', jsonError);
-                throw new Error('Failed to generate payment address: Invalid response format');
-            }
-            return data.data;
-        } catch (error) {
-            console.error('Error generating payment address:', error);
-            throw error;
-        }
-    }
-
+    
+    // Mock methods removed as per requirement
+    
+    // Mock methods removed as per requirement
+    
     /**
-     * Check payment status
-     * @param {string} addressId - Payment address ID
-     * @returns {Promise<Object>} - Payment status data
+     * Create an API key
+     * @param {Object} apiKeyData - Data for the API key to create
+     * @returns {Promise<Object>} Created API key with key and secret values
      */
-    async checkPaymentStatus(addressId) {
+    async createApiKey(apiKeyData) {
         try {
-            const authHeaders = this.getAuthHeaders();
-            const response = await this.request(`/merchant/payment-addresses/${addressId}`, {
-                method: 'GET',
-                headers: authHeaders
-            });
-
-            if (!response.ok) {
-                console.log('Error response from checkPaymentStatus:', response);
-                let errorMessage;
-                try {
-                    // Try to get error details if available
-                    const errorText = await response.text();
-                    console.error('API error response:', errorText);
-                    
-                    // Try to parse the error as JSON if possible
-                    try {
-                        const errorJson = JSON.parse(errorText);
-                        if (errorJson.error && errorJson.error.message) {
-                            errorMessage = errorJson.error.message;
-                        } else {
-                            errorMessage = errorText;
-                        }
-                    } catch (jsonError) {
-                        errorMessage = errorText || response.statusText;
-                    }
-                } catch (textError) {
-                    errorMessage = response.statusText || 'Unknown error';
-                }
-                throw new Error('Failed to check payment status: ' + errorMessage);
+            // Ensure we have all required fields
+            if (!apiKeyData.description) {
+                throw new Error('API key description is required');
             }
-
-            let data;
-            try {
-                data = await response.json();
-            } catch (jsonError) {
-                console.error('Failed to parse JSON response:', jsonError);
-                throw new Error('Failed to check payment status: Invalid response format');
+            
+            // Check permissions - backend expects an object with permission names as keys
+            if (!apiKeyData.permissions || Object.keys(apiKeyData.permissions).length === 0) {
+                throw new Error('At least one permission must be specified');
             }
-            return data.data;
+            
+            const response = await this.apiRequest('POST', this.endpoints.apiKeys, apiKeyData);
+            
+            // Log success but not the actual key (for security)
+            console.info('API key created successfully:', apiKeyData.description);
+            
+            return response.data;
         } catch (error) {
-            console.error('Error checking payment status:', error);
+            console.error('Error creating API key:', error);
+            // Enhance error message with more details if possible
+            if (error.response && error.response.data && error.response.data.message) {
+                throw new Error(`API error: ${error.response.data.message}`);
+            }
             throw error;
         }
     }
     
     /**
-     * Get all payments
-     * @param {string} filter - Filter by status ('all', 'pending', 'complete', 'expired')
-     * @param {string} search - Search query
-     * @param {string} dateRange - Date range filter ('7d', '30d', '90d', etc)
-     * @param {number} page - Page number
-     * @param {number} limit - Number of items per page
-     * @returns {Promise<Array>} - List of payments
+     * Delete an API key
+     * @param {string} keyId - API key ID to delete
+     * @returns {Promise<void>}
      */
-    async getPayments(filter = 'all', search = '', dateRange = '7d', page = 1, limit = 20) {
+    async deleteApiKey(keyId) {
         try {
-            // Use the correct payments endpoint as shown in the error message
-            let url = `/merchant/payment-addresses?page=${page}&limit=${limit}`;
+            if (!keyId) {
+                throw new Error('API key ID is required');
+            }
             
-            // Map UI filters to API status values
+            await this.apiRequest('DELETE', `${this.endpoints.apiKeys}/${keyId}`);
+            console.info('API key deleted successfully');
+            return true;
+        } catch (error) {
+            console.error('Error deleting API key:', error);
+            // Enhance error message with more details if possible
+            if (error.response && error.response.data && error.response.data.message) {
+                throw new Error(`API error: ${error.response.data.message}`);
+            }
+            throw error;
+        }
+    }
+    
+    /**
+     * Get an API key by ID
+     * @param {string} keyId - API key ID
+     * @returns {Promise<Object>} API key details
+     */
+    async getApiKeyById(keyId) {
+        try {
+            const response = await this.apiRequest('GET', `${this.endpoints.apiKeys}/${keyId}`);
+            return response.data;
+        } catch (error) {
+            console.error(`Error fetching API key ${keyId}:`, error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Get all payment addresses
+     * @returns {Promise<Array>} List of payment addresses
+     */
+    async getAddresses() {
+        try {
+            const response = await this.apiRequest('GET', this.endpoints.addresses);
+            // Make sure we always return an array
+            return Array.isArray(response.data) ? response.data : [];
+        } catch (error) {
+            console.error('Error fetching addresses:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Get all payments with optional filtering
+     * @param {string} filter - Filter payments by status (all, pending, completed, failed)
+     * @param {string} search - Search term to filter payments 
+     * @param {string} dateRange - Date range to filter payments (1d, 7d, 30d, 90d, custom)
+     * @returns {Promise<Array>} List of payments
+     */
+    async getPayments(filter = 'all', search = '', dateRange = '7d') {
+        try {
+            // Build query parameters
+            const queryParams = [];
+            
             if (filter && filter !== 'all') {
-                const statusMap = {
-                    'pending': 'ACTIVE',
-                    'complete': 'USED',
-                    'expired': 'EXPIRED'
-                };
-                const apiStatus = statusMap[filter] || filter.toUpperCase();
-                url += `&status=${apiStatus}`;
+                queryParams.push(`status=${encodeURIComponent(filter)}`);
             }
             
-            // Add search parameter if provided
             if (search) {
-                url += `&search=${encodeURIComponent(search)}`;
+                queryParams.push(`search=${encodeURIComponent(search)}`);
             }
             
-            // Add date range parameter
             if (dateRange) {
-                url += `&dateRange=${dateRange}`;
+                queryParams.push(`dateRange=${encodeURIComponent(dateRange)}`);
             }
             
-            console.log('Fetching payments with URL:', url);
+            // Construct the endpoint with query parameters
+            const endpoint = queryParams.length > 0 
+                ? `${this.endpoints.payments}?${queryParams.join('&')}` 
+                : this.endpoints.payments;
             
-            try {
-                // Make the API request
-                const response = await this.request(url);
-                
-                // Check if the response was successful
-                if (!response.ok) {
-                    console.log('Error response from getPayments:', response);
-                    let errorMessage;
-                    try {
-                        // Try to get error details if available
-                        const errorText = await response.text();
-                        console.error('API error response:', errorText);
-                        
-                        // Try to parse the error as JSON if possible
-                        try {
-                            const errorJson = JSON.parse(errorText);
-                            if (errorJson.error && errorJson.error.message) {
-                                errorMessage = errorJson.error.message;
-                            } else {
-                                errorMessage = errorText;
-                            }
-                        } catch (jsonError) {
-                            errorMessage = errorText || response.statusText;
-                        }
-                    } catch (textError) {
-                        errorMessage = response.statusText || 'Unknown error';
-                    }
-                    throw new Error('Failed to fetch payments: ' + errorMessage);
-                }
-                
-                // Parse the JSON response
-                let responseData;
-                try {
-                    responseData = await response.json();
-                    console.log('Payments API response:', responseData);
-                } catch (jsonError) {
-                    console.error('Failed to parse JSON response:', jsonError);
-                    throw new Error('Failed to fetch payments: Invalid response format');
-                }
-                
-                // Check if the API returned success and has the expected structure
-                if (responseData.success && responseData.data) {
-                    // The API returns addresses in data.addresses, not directly in data
-                    if (responseData.data.addresses && Array.isArray(responseData.data.addresses)) {
-                        console.log('Found', responseData.data.addresses.length, 'payment addresses');
-                        return responseData.data.addresses;
-                    } else {
-                        console.warn('API response missing addresses array:', responseData);
-                        return [];
-                    }
-                } else {
-                    console.warn('Unexpected API response structure:', responseData);
-                    return [];                    
-                }
-            } catch (fetchError) {
-                console.error('Error in request:', fetchError);
-                // For testing purposes, return an empty array instead of throwing
-                // This will prevent the UI from breaking when the API is unavailable
-                return [];
-            }
+            const response = await this.apiRequest('GET', endpoint);
+            
+            // Make sure we always return an array
+            return Array.isArray(response.data) ? response.data : [];
         } catch (error) {
-            console.error('Error in getPayments:', error);
-            // Return empty array instead of throwing to prevent UI breakdown
-            return [];
+            console.error('Error fetching payments:', error);
+            throw error;
         }
     }
     
     /**
-     * Get payment by ID
-     * @param {string} paymentId - Payment ID or Address ID
-     * @returns {Promise<Object>} - Payment data
+     * Get a payment by ID
+     * @param {string} paymentId - ID of the payment to retrieve
+     * @returns {Promise<Object>} Payment details
      */
     async getPaymentById(paymentId) {
         try {
-            console.log(`Fetching payment details for ID: ${paymentId}`);
-            
-            try {
-                // Make the API request using our request method
-                const response = await this.request(`/merchant/payment-addresses/${paymentId}`);
-                
-                // Check if the response was successful
-                if (!response.ok) {
-                    console.log('Error response from getPaymentById:', response);
-                    let errorMessage;
-                    try {
-                        // Try to get error details if available
-                        const errorText = await response.text();
-                        console.error('API error response:', errorText);
-                        
-                        // Try to parse the error as JSON if possible
-                        try {
-                            const errorJson = JSON.parse(errorText);
-                            if (errorJson.error && errorJson.error.message) {
-                                errorMessage = errorJson.error.message;
-                            } else {
-                                errorMessage = errorText;
-                            }
-                        } catch (jsonError) {
-                            errorMessage = errorText || response.statusText;
-                        }
-                    } catch (textError) {
-                        errorMessage = response.statusText || 'Unknown error';
-                    }
-                    throw new Error('Failed to get payment: ' + errorMessage);
-                }
-                
-                // Parse the JSON response
-                let responseData;
-                try {
-                    responseData = await response.json();
-                    console.log('Payment details API response:', responseData);
-                } catch (jsonError) {
-                    console.error('Failed to parse JSON response:', jsonError);
-                    throw new Error('Failed to get payment details: Invalid response format');
-                }
-                
-                // Check if the API returned success and has the expected structure
-                if (responseData.success && responseData.data) {
-                    // The API returns address data in data.address, not directly in data
-                    if (responseData.data.address) {
-                        return responseData.data.address;
-                    } else {
-                        // If there's no address property but there is data, return the data object
-                        console.log('API response has data but no address property, using data directly');
-                        return responseData.data;
-                    }
-                } else {
-                    console.warn('Unexpected API response structure:', responseData);
-                    return {};                    
-                }
-            } catch (fetchError) {
-                console.error('Error in request:', fetchError);
-                // For testing purposes, return an empty object instead of throwing
-                // This will prevent the UI from breaking when the API is unavailable
-                return {};
+            if (!paymentId) {
+                throw new Error('Payment ID is required');
             }
+            
+            const response = await this.apiRequest('GET', `${this.endpoints.payments}/${paymentId}`);
+            return response.data;
         } catch (error) {
-            console.error('Error in getPaymentById:', error);
-            // Return empty object instead of throwing to prevent UI breakdown
-            return {};
+            console.error(`Error fetching payment ${paymentId}:`, error);
+            throw error;
         }
     }
     
     /**
-     * Create a payout request
-     * @param {Object} payoutData - Payout data
-     * @param {number} payoutData.amount - Amount to pay out
-     * @param {string} payoutData.destinationAddress - Recipient cryptocurrency address
-     * @param {string} payoutData.currency - Currency code (e.g., 'USDT')
-     * @param {string} [payoutData.network='BSC'] - Network to use (e.g., 'BSC')
-     * @param {string} [payoutData.callbackUrl] - URL to call when payout is complete
-     * @param {string} [payoutData.webhookUrl] - URL to send webhook notifications to
-     * @param {Object} [payoutData.metadata] - Additional metadata for the payout
-     * @returns {Promise<Object>} - Payout request data
+     * Generate a new payment address for receiving cryptocurrency payments
+     * @param {Object} paymentData - Data for the payment to create
+     * @param {string} paymentData.currency - Cryptocurrency for payment (e.g., 'BTC', 'ETH', 'USDT')
+     * @param {number} paymentData.expectedAmount - Expected amount in cryptocurrency
+     * @param {string} paymentData.fiatCurrency - Fiat currency reference (e.g., 'USD', 'EUR')
+     * @param {number} paymentData.fiatAmount - Amount in fiat currency (for reference)
+     * @param {string} paymentData.reference - Reference or order ID
+     * @param {Object} paymentData.metadata - Additional metadata about the payment
+     * @param {string} paymentData.callbackUrl - URL to notify when payment status changes
+     * @returns {Promise<Object>} Created payment address details
      */
-    async createPayout(payoutData) {
+    async generatePaymentAddress(paymentData) {
         try {
-            // Get authentication headers
-            const authHeaders = this.getAuthHeaders();
+            // Validate required fields
+            if (!paymentData.currency) {
+                throw new Error('Cryptocurrency currency is required');
+            }
             
-            // Convert to match the API expected format
-            const apiPayload = {
-                amount: payoutData.amount,
-                currency: payoutData.currency || 'USDT',
-                network: payoutData.network || 'BSC',
-                recipientAddress: payoutData.destinationAddress || payoutData.address || payoutData.recipientAddress,
-                webhookUrl: payoutData.webhookUrl || payoutData.callbackUrl || '',
-                metadata: payoutData.metadata || {}
+            if (!paymentData.expectedAmount || isNaN(paymentData.expectedAmount)) {
+                throw new Error('Expected amount must be a valid number');
+            }
+            
+            if (!paymentData.metadata.reference) {
+                throw new Error('Reference is required');
+            }
+            
+            // Prepare the data for the API
+            const requestData = {
+                currency: paymentData.currency,
+                expectedAmount: paymentData.expectedAmount,
+                reference: paymentData.metadata.reference,
+                metadata: paymentData.metadata || {},
+                callbackUrl: paymentData.callbackUrl || ''
             };
             
-            // If metadata contains description, move it to the metadata object
-            if (payoutData.description && !apiPayload.metadata.description) {
-                apiPayload.metadata.description = payoutData.description;
+            // Store fiat currency info in metadata if provided
+            if (paymentData.fiatCurrency && paymentData.fiatAmount) {
+                requestData.metadata.fiatCurrency = paymentData.fiatCurrency;
+                requestData.metadata.fiatAmount = paymentData.fiatAmount;
             }
             
-            const response = await fetch(`${this.apiBaseUrl}/merchant/payouts`, {
-                method: 'POST',
-                headers: authHeaders,
-                body: JSON.stringify(apiPayload)
-            });
-
-            if (!response.ok) {
-    console.log(response);            const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to create payout');
-            }
-
-            const data = await response.json();
-            return data.data;
+            // Create the payment address
+            const response = await this.apiRequest('POST', this.endpoints.addresses, requestData);
+            console.info('Payment address generated successfully');
+            return response.data;
         } catch (error) {
-            console.error('Error creating payment:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Generate QR code for payment address
-     * @param {string} address - Cryptocurrency address
-     * @param {string} amount - Payment amount
-     * @param {string} currency - Currency code
-     * @param {string} network - Network (e.g., 'BEP20', 'ERC20')
-     * @returns {string} - QR code data URL
-     */
-     
-    /**
-     * Generate a new cryptocurrency address
-     * @param {Object} addressData - Address data object
-     * @returns {Promise<Object>} - Generated address data
-     */
-    async generateAddress(addressData) {
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/merchant/payment-addresses`, {
-                method: 'POST',
-                headers: this.headers,
-                body: JSON.stringify(addressData)
-            });
-
-            if (!response.ok) {
-    console.log(response);            const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to generate address');
+            console.error('Error generating payment address:', error);
+            // Extract more detailed error message if available
+            if (error.response && error.response.data && error.response.data.message) {
+                throw new Error(`API error: ${error.response.data.message}`);
             }
-
-            const data = await response.json();
-            return data.data;
-        } catch (error) {
-            console.error('Error generating address:', error);
             throw error;
         }
     }
     
     /**
-     * Get all addresses
-     * @param {string} filter - Filter by status (all, active, inactive, expired)
-     * @param {string} search - Search term
-     * @returns {Promise<Array>} - List of addresses
+     * Get the exchange rates for supported currencies
+     * @param {string} baseCurrency - Base currency to get rates for (e.g., 'USD')
+     * @returns {Promise<Object>} Exchange rates
      */
-    async getAddresses(filter = 'all', search = '') {
+    async getExchangeRates(baseCurrency = 'USD') {
         try {
-            let url = `${this.apiBaseUrl}/addresses?`;
-            
-            if (filter && filter !== 'all') {
-                url += `status=${filter}&`;
-            }
-            
-            if (search) {
-                url += `search=${encodeURIComponent(search)}&`;
+            // Check if we have cached rates that are less than 5 minutes old
+            const now = new Date();
+            if (this.exchangeRatesCache && this.lastExchangeRatesUpdate && 
+                (now.getTime() - this.lastExchangeRatesUpdate.getTime() < 5 * 60 * 1000)) {
+                return this.exchangeRatesCache;
             }
             
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: this.headers
-            });
-
-            if (!response.ok) {
-    console.log(response);            const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to get addresses');
-            }
-
-            const data = await response.json();
-            return data.data;
-        } catch (error) {
-            console.error('Error getting addresses:', error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Get address by ID
-     * @param {string} addressId - Address ID
-     * @returns {Promise<Object>} - Address data
-     */
-    async getAddressById(addressId) {
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/merchant/payment-addresses/${addressId}`, {
-                method: 'GET',
-                headers: this.headers
-            });
-
-            if (!response.ok) {
-    console.log(response);            const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to get address');
-            }
-
-            const data = await response.json();
-            return data.data;
-        } catch (error) {
-            console.error('Error getting address:', error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Delete address
-     * @param {string} addressId - Address ID
-     * @returns {Promise<void>}
-     */
-    async deleteAddress(addressId) {
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/merchant/payment-addresses/${addressId}`, {
-                method: 'DELETE',
-                headers: this.headers
-            });
-
-            if (!response.ok) {
-    console.log(response);            const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to delete address');
-            }
-        } catch (error) {
-            console.error('Error deleting address:', error);
-            throw error;
-        }
-    }
-    
-    /**
-    generateQRCode(address, amount, currency, network = 'BEP20') {
-        // Create appropriate URI scheme based on currency and network
-        let qrData;
-        
-        switch(currency) {
-            case 'BTC':
-                qrData = `bitcoin:${address}?amount=${amount}`;
-                break;
-            case 'ETH':
-                qrData = `ethereum:${address}?value=${amount}`;
-                break;
-            default:
-                // For other tokens, include currency and network info
-                qrData = `${address}?amount=${amount}&currency=${currency}&network=${network}`;
-        }
-        
-        return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
-    }
-    
-    /**
-     * Initialize QR code scanner
-     * @returns {Promise<Object>} - Scanner instance
-     */
-    async initQRScanner() {
-        try {
-            // Check if HTML5 QR scanner library is loaded
-            if (!window.Html5Qrcode) {
-                throw new Error('QR scanner library not loaded');
-            }
+            const response = await this.apiRequest('GET', `${this.endpoints.exchangeRates}?base=${baseCurrency}`);
             
-            const scanner = new Html5Qrcode('qr-scanner');
-            return scanner;
-        } catch (error) {
-            console.error('Error initializing QR scanner:', error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Start QR code scanner
-     * @param {Object} scanner - Scanner instance
-     * @param {Function} onSuccess - Success callback
-     * @returns {Promise<void>}
-     */
-    async startQRScanner(scanner, onSuccess) {
-        try {
-            const config = { fps: 10, qrbox: 250 };
-            await scanner.start(
-                { facingMode: 'environment' },
-                config,
-                (decodedText) => {
-                    // Stop scanner after successful scan
-                    scanner.stop();
-                    
-                    // Parse the QR code data
-                    let address, amount, currency, network;
-                    
-                    if (decodedText.startsWith('bitcoin:')) {
-                        // Bitcoin URI
-                        const btcUri = new URL(decodedText);
-                        address = btcUri.pathname.replace('//', '');
-                        amount = btcUri.searchParams.get('amount') || '';
-                        currency = 'BTC';
-                        network = 'Bitcoin';
-                    } else if (decodedText.startsWith('ethereum:')) {
-                        // Ethereum URI
-                        const ethUri = new URL(decodedText);
-                        address = ethUri.pathname.replace('//', '');
-                        amount = ethUri.searchParams.get('value') || '';
-                        currency = 'ETH';
-                        network = 'Ethereum';
-                    } else if (decodedText.includes('?')) {
-                        // Generic URI with parameters
-                        const uri = new URL(`https://example.com/${decodedText}`);
-                        address = decodedText.split('?')[0];
-                        amount = uri.searchParams.get('amount') || '';
-                        currency = uri.searchParams.get('currency') || this.preferredCurrency;
-                        network = uri.searchParams.get('network') || this.preferredNetwork;
-                    } else {
-                        // Just an address
-                        address = decodedText;
-                        amount = '';
-                        currency = this.preferredCurrency;
-                        network = this.preferredNetwork;
-                    }
-                    
-                    onSuccess({ address, amount, currency, network });
-                },
-                (errorMessage) => {
-                    console.log(errorMessage);
-                }
-            );
-        } catch (error) {
-            console.error('Error starting QR scanner:', error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Stop QR code scanner
-     * @param {Object} scanner - Scanner instance
-     * @returns {Promise<void>}
-     */
-    async stopQRScanner(scanner) {
-        try {
-            if (scanner) {
-                await scanner.stop();
-            }
-        } catch (error) {
-            console.error('Error stopping QR scanner:', error);
-        }
-    }
-
-    /**
-     * Format blockchain transaction hash for display
-     * @param {string} hash - Transaction hash
-     * @returns {string} - Formatted hash (truncated)
-     */
-    formatTransactionHash(hash) {
-        if (!hash) return '';
-        return `${hash.substring(0, 6)}...${hash.substring(hash.length - 4)}`;
-    }
-
-    /**
-     * Get transaction explorer URL
-     * @param {string} hash - Transaction hash
-     * @returns {string} - Block explorer URL
-     */
-    getTransactionExplorerUrl(hash) {
-        return `https://bscscan.com/tx/${hash}`;
-    }
-
-    /**
-     * Format date for display
-     * @param {string} isoDate - ISO date string
-     * @returns {string} - Formatted date
-     */
-    formatDate(isoDate) {
-        return new Date(isoDate).toLocaleString('en-US', { 
-            month: 'short', 
-            day: 'numeric', 
-            year: 'numeric',
-            hour: 'numeric',
-            minute: 'numeric'
-        });
-    }
-
-    /**
-     * Get supported currencies
-     * @returns {Array<string>} - List of supported currencies
-     */
-    getSupportedCurrencies() {
-        return this.supportedCurrencies;
-    }
-    
-    /**
-     * Get supported networks for a currency
-     * @param {string} currency - Currency code
-     * @returns {Array<string>} - List of supported networks
-     */
-    getSupportedNetworks(currency) {
-        return this.supportedNetworks[currency] || [];
-    }
-
-    /**
-     * Set preferred currency
-     * @param {string} currency - Currency code
-     * @returns {boolean} - Success status
-     */
-    setPreferredCurrency(currency) {
-        if (this.supportedCurrencies.includes(currency)) {
-            this.preferredCurrency = currency;
-            localStorage.setItem('preferredCurrency', currency);
+            // Cache the rates
+            this.exchangeRatesCache = response.data;
+            this.lastExchangeRatesUpdate = now;
             
-            // Set default network for this currency if current network is not supported
-            const networks = this.getSupportedNetworks(currency);
-            if (networks.length > 0 && !networks.includes(this.preferredNetwork)) {
-                this.setPreferredNetwork(networks[0]);
-            }
-            
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * Get preferred currency
-     * @returns {string} - Preferred currency code
-     */
-    getPreferredCurrency() {
-        return this.preferredCurrency;
-    }
-    
-    /**
-     * Set preferred network
-     * @param {string} network - Network code
-     * @returns {boolean} - Success status
-     */
-    setPreferredNetwork(network) {
-        const networks = this.getSupportedNetworks(this.preferredCurrency);
-        if (networks.includes(network)) {
-            this.preferredNetwork = network;
-            localStorage.setItem('preferredNetwork', network);
-            return true;
-        }
-        return false;
-    }
-    
-    /**
-     * Get preferred network
-     * @returns {string} - Preferred network code
-     */
-    getPreferredNetwork() {
-        return this.preferredNetwork;
-    }
-    
-    /**
-     * Format currency amount with symbol
-     * @param {string|number} amount - Amount to format
-     * @param {string} currency - Currency code
-     * @returns {string} - Formatted amount with symbol
-     */
-    formatCurrencyAmount(amount, currency) {
-        const symbols = {
-            'USDT': '₮',
-            'BTC': '₿',
-            'ETH': 'Ξ',
-            'BNB': 'BNB',
-            'BUSD': 'BUSD',
-            'XRP': 'XRP',
-            'ADA': 'ADA',
-            'SOL': 'SOL',
-            'DOT': 'DOT'
-        };
-        
-        const symbol = symbols[currency] || currency;
-        
-        // Format based on currency
-        if (currency === 'BTC') {
-            // Show more decimal places for BTC
-            return `${parseFloat(amount).toFixed(8)} ${symbol}`;
-        } else {
-            return `${parseFloat(amount).toFixed(2)} ${symbol}`;
-        }
-    }
-
-    /**
-     * Get exchange rates for a base currency
-     * @param {string} baseCurrency - Base currency code
-     * @param {boolean} forceRefresh - Force refresh the rates from API
-     * @returns {Promise<Object>} - Exchange rates data
-     */
-    async getExchangeRates(baseCurrency = 'USDT', forceRefresh = false) {
-        try {
-            const response = await fetch(`${this.apiBaseUrl}/exchange-rates?base=${baseCurrency}`, {
-                method: 'GET',
-                headers: this.headers
-            });
-
-            if (!response.ok) {
-    console.log(response);            const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to fetch exchange rates');
-            }
-
-            const data = await response.json();
-            // Update cache
-            this.exchangeRatesCache = data.data;
-            this.lastExchangeRatesUpdate = new Date();
-            return data.data;
+            return response.data;
         } catch (error) {
             console.error('Error fetching exchange rates:', error);
-            // Return some fallback rates to prevent UI breaking
-            return {
-                base: baseCurrency,
-                rates: {
-                    USDT: 1,
-                    BTC: 0.000033,
-                    ETH: 0.00042,
-                    BNB: 0.0033,
-                    BUSD: 1
-                },
-                timestamp: new Date().toISOString()
-            };
-        }
-    }
-    
-    /**
-     * Get cached exchange rates or fetch new ones if cache is expired
-     * @param {string} baseCurrency - Base currency code
-     * @returns {Promise<Object>} - Exchange rates data
-     */
-    async getCachedExchangeRates(baseCurrency = 'USDT') {
-        // Check if we have cached rates and they're not expired (less than 5 minutes old)
-        const now = new Date();
-        if (this.exchangeRatesCache && this.lastExchangeRatesUpdate && 
-            (now.getTime() - this.lastExchangeRatesUpdate.getTime() < 5 * 60 * 1000) &&
-            this.exchangeRatesCache.base === baseCurrency) {
-            return this.exchangeRatesCache;
-        }
-        
-        // Fetch fresh rates
-        return await this.getExchangeRates(baseCurrency, true);
-    }
-    
-    /**
-     * Get transaction history
-     * @param {Object} options - Filter options
-     * @param {number} options.limit - Maximum number of transactions to return
-     * @param {string} options.status - Filter by status
-     * @param {string} options.currency - Filter by currency
-     * @returns {Promise<Object>} - Transaction history data
-     */
-    async getTransactionHistory(options = {}) {
-        try {
-            // In a real implementation, this would fetch from the API
-            // For demo, we'll use the cached history with filters
-            let transactions = [...this.transactionHistory];
             
-            // Apply filters
-            if (options.status) {
-                transactions = transactions.filter(tx => tx.status === options.status);
+            // Return cached data if available
+            if (this.exchangeRatesCache) {
+                return this.exchangeRatesCache;
             }
             
-            if (options.currency) {
-                transactions = transactions.filter(tx => tx.currency === options.currency);
-            }
-            
-            // Sort by date (newest first)
-            transactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-            
-            // Apply limit
-            if (options.limit && options.limit > 0) {
-                transactions = transactions.slice(0, options.limit);
-            }
-            
-            return {
-                transactions,
-                total: this.transactionHistory.length,
-                filtered: transactions.length
-            };
-        } catch (error) {
-            console.error('Error fetching transaction history:', error);
             throw error;
         }
     }
     
-    /**
-     * Add transaction to history
-     * @param {Object} transaction - Transaction data
-     */
-    addTransactionToHistory(transaction) {
-        // Add transaction to history if it doesn't exist
-        const exists = this.transactionHistory.some(tx => tx.reference === transaction.reference);
-        if (!exists) {
-            this.transactionHistory.push(transaction);
-            // Keep only the last 50 transactions
-            if (this.transactionHistory.length > 50) {
-                this.transactionHistory = this.transactionHistory.slice(-50);
-            }
-            localStorage.setItem('transactionHistory', JSON.stringify(this.transactionHistory));
-        }
-    }
-    
-    /**
-     * Clear transaction history
-     */
-    clearTransactionHistory() {
-        this.transactionHistory = [];
-        localStorage.removeItem('transactionHistory');
-    }
-    
-    /**
-     * Add address to favorites
-     * @param {Object} addressData - Address data
-     * @param {string} addressData.address - Cryptocurrency address
-     * @param {string} addressData.label - Address label
-     * @param {string} addressData.currency - Currency code
-     * @param {string} addressData.network - Network code
-     * @returns {boolean} - Success status
-     */
-    addFavoriteAddress(addressData) {
-        if (!addressData.address) return false;
-        
-        // Check if address already exists
-        const exists = this.favoriteAddresses.some(a => a.address === addressData.address);
-        if (!exists) {
-            this.favoriteAddresses.push({
-                ...addressData,
-                id: Date.now().toString(),
-                addedAt: new Date().toISOString()
-            });
-            localStorage.setItem('favoriteAddresses', JSON.stringify(this.favoriteAddresses));
-            return true;
-        }
-        return false;
-    }
-    
-    /**
-     * Remove address from favorites
-     * @param {string} addressId - Address ID
-     * @returns {boolean} - Success status
-     */
-    removeFavoriteAddress(addressId) {
-        const initialLength = this.favoriteAddresses.length;
-        this.favoriteAddresses = this.favoriteAddresses.filter(a => a.id !== addressId);
-        
-        if (initialLength !== this.favoriteAddresses.length) {
-            localStorage.setItem('favoriteAddresses', JSON.stringify(this.favoriteAddresses));
-            return true;
-        }
-        return false;
-    }
-    
-    /**
-     * Get favorite addresses
-     * @param {string} currency - Filter by currency
-     * @returns {Array<Object>} - List of favorite addresses
-     */
-    getFavoriteAddresses(currency) {
-        if (currency) {
-            return this.favoriteAddresses.filter(a => a.currency === currency);
-        }
-        return this.favoriteAddresses;
-    }
-    
-    /**
-     * Get cached exchange rates or fetch new ones if cache is expired
-     * @param {string} baseCurrency - Base currency code
-     * @returns {Promise<Object>} - Exchange rates data
-     */
-    async getCachedExchangeRates(baseCurrency = 'USDT') {
-        // If we have cached rates that are less than 5 minutes old, use them
-        const cacheExpiryTime = 5 * 60 * 1000; // 5 minutes in milliseconds
-        
-        if (this.exchangeRatesCache && 
-            this.lastExchangeRatesUpdate && 
-            (new Date() - this.lastExchangeRatesUpdate) < cacheExpiryTime &&
-            this.exchangeRatesCache.base === baseCurrency) {
-            return this.exchangeRatesCache;
-        }
-        
-        // Otherwise fetch new rates
-        return await this.getExchangeRates(baseCurrency, true);
-    }
-
-    /**
-     * Get transaction history for a user or merchant
-     * @param {Object} options - Query options
-     * @param {number} options.limit - Number of transactions to return
-     * @param {number} options.offset - Offset for pagination
-     * @param {string} options.status - Filter by status
-     * @returns {Promise<Object>} - Transaction history data
-     */
-    async getTransactionHistory(options = {}) {
-        try {
-            const queryParams = new URLSearchParams();
-            if (options.limit) queryParams.append('limit', options.limit);
-            if (options.offset) queryParams.append('offset', options.offset);
-            if (options.status) queryParams.append('status', options.status);
-            
-            const response = await fetch(`${this.apiBaseUrl}/transactions?${queryParams.toString()}`, {
-                method: 'GET',
-                headers: this.headers
-            });
-
-            if (!response.ok) {
-    console.log(response);            const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to fetch transaction history');
-            }
-
-            const data = await response.json();
-            return data.data;
-        } catch (error) {
-            console.error('Error fetching transaction history:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Format currency amount with proper symbol
-     * @param {string|number} amount - Amount to format
-     * @param {string} currency - Currency code
-     * @param {boolean} includeUsdValue - Whether to include USD equivalent value
-     * @returns {string} - Formatted amount with currency symbol
-     */
-    async formatCurrencyAmount(amount, currency, includeUsdValue = false) {
-        const symbols = {
-            USDT: '₮',
-            BTC: '₿',
-            ETH: 'Ξ',
-            BNB: 'BNB',
-            BUSD: 'BUSD'
-        };
-        
-        const symbol = symbols[currency] || currency;
-        let formattedAmount = `${amount} ${symbol}`;
-        
-        if (includeUsdValue && currency !== 'USDT' && currency !== 'BUSD') {
-            try {
-                const rates = await this.getCachedExchangeRates('USDT');
-                if (rates && rates.rates && rates.rates[currency]) {
-                    const usdValue = (parseFloat(amount) / rates.rates[currency]).toFixed(2);
-                    formattedAmount += ` (≈ $${usdValue})`;
-                }
-            } catch (error) {
-                console.warn('Could not include USD value in formatting:', error);
-            }
-        }
-        
-        return formattedAmount;
-    }
 }
 
 /**
@@ -1414,570 +716,34 @@ class PaymentUI {
         // Apply theme based on saved preference
         this.applyTheme();
     }
-
-    /**
-     * Initialize the payment UI
-     * @param {Object} paymentData - Payment data from the server
-     */
+    
+    // Initialize the payment UI
+    // @param {Object} paymentData - Payment data from the server
     initialize(paymentData) {
         this.paymentData = paymentData;
-        this.renderPaymentDetails();
-        this.startCountdown();
-        this.setupEventListeners();
-        this.startStatusCheck();
-        this.setupCurrencySelector();
-        this.setupThemeToggle();
-    }
-
-    /**
-     * Render payment details in the UI
-     */
-    renderPaymentDetails() {
-        // Update amount
-        document.querySelectorAll('.payment-amount').forEach(el => {
-            el.textContent = `${this.paymentData.amount} ${this.paymentData.currency}`;
-        });
-
-        // Update order reference
-        document.querySelectorAll('.payment-reference').forEach(el => {
-            el.textContent = this.paymentData.reference;
-        });
-
-        // Update payment address
-        document.querySelectorAll('.payment-address').forEach(el => {
-            el.textContent = this.paymentData.address;
-        });
-
-        // Generate and update QR code
-        const qrCodeUrl = this.paymentApi.generateQRCode(
-            this.paymentData.address,
-            this.paymentData.amount,
-            this.paymentData.currency
-        );
-        document.querySelectorAll('.qr-code img').forEach(el => {
-            el.src = qrCodeUrl;
-            el.alt = `Pay ${this.paymentData.amount} ${this.paymentData.currency} to ${this.paymentData.address}`;
-        });
-    }
-
-    /**
-     * Start countdown timer
-     */
-    startCountdown() {
-        const countdownEl = document.getElementById('countdown');
-        if (!countdownEl) return;
-
-        const expiryTime = new Date(this.paymentData.expiresAt).getTime();
-        
-        this.countdownInterval = setInterval(() => {
-            const now = new Date().getTime();
-            const distance = expiryTime - now;
-            
-            if (distance <= 0) {
-                this.stopCountdown();
-                countdownEl.innerHTML = "Expired";
-                this.showScreen('error-screen');
-                document.getElementById('error-message').textContent = 'Payment time expired';
-                return;
-            }
-            
-            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
-            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-            
-            countdownEl.innerHTML = 
-                minutes.toString().padStart(2, '0') + ":" + 
-                seconds.toString().padStart(2, '0');
-        }, 1000);
-    }
-
-    /**
-     * Stop countdown timer
-     */
-    stopCountdown() {
-        if (this.countdownInterval) {
-            clearInterval(this.countdownInterval);
-            this.countdownInterval = null;
-        }
-    }
-
-    /**
-     * Start periodic payment status check
-     */
-    startStatusCheck() {
-        // Check status every 10 seconds
-        this.statusCheckInterval = setInterval(() => {
-            this.checkPaymentStatus();
-        }, 10000);
-    }
-
-    /**
-     * Stop periodic payment status check
-     */
-    stopStatusCheck() {
-        if (this.statusCheckInterval) {
-            clearInterval(this.statusCheckInterval);
-            this.statusCheckInterval = null;
-        }
-    }
-
-    /**
-     * Check payment status
-     */
-    async checkPaymentStatus() {
-        try {
-            const statusData = await this.paymentApi.checkPaymentStatus(this.paymentData.reference);
-            
-            // Store previous status to detect changes
-            const previousStatus = this.paymentData.status;
-            
-            // Update payment data with latest status
-            this.paymentData = {...this.paymentData, ...statusData};
-            
-            // Update UI based on payment status
-            switch(statusData.status) {
-                case 'pending':
-                    // Still waiting for payment
-                    break;
-                    
-                case 'confirming':
-                    this.showScreen('confirming-screen');
-                    this.updateConfirmationStatus(statusData);
-                    
-                    // Show notification if status just changed
-                    if (previousStatus !== 'confirming') {
-                        this.showNotification(
-                            'Payment Detected', 
-                            'Your payment has been detected and is being confirmed.'
-                        );
-                    }
-                    break;
-                    
-                case 'confirmed':
-                    this.stopStatusCheck();
-                    this.stopCountdown();
-                    this.showScreen('success-screen');
-                    this.updateSuccessStatus(statusData);
-                    
-                    // Show notification if status just changed
-                    if (previousStatus !== 'confirmed') {
-                        this.showNotification(
-                            'Payment Confirmed', 
-                            'Your payment has been confirmed successfully!'
-                        );
-                    }
-                    break;
-                    
-                case 'failed':
-                    this.stopStatusCheck();
-                    this.stopCountdown();
-                    this.showScreen('error-screen');
-                    document.getElementById('error-message').textContent = 
-                        statusData.errorMessage || 'Payment failed';
-                    
-                    // Show notification if status just changed
-                    if (previousStatus !== 'failed') {
-                        this.showNotification(
-                            'Payment Failed', 
-                            statusData.errorMessage || 'Your payment has failed.'
-                        );
-                    }
-                    break;
-            }
-        } catch (error) {
-            console.error('Error checking payment status:', error);
-        }
-    }
-
-    /**
-     * Update confirmation screen with status data
-     * @param {Object} statusData - Payment status data
-     */
-    updateConfirmationStatus(statusData) {
-        // Update transaction hash
-        const hashElements = document.querySelectorAll('.transaction-hash');
-        hashElements.forEach(el => {
-            el.textContent = this.paymentApi.formatTransactionHash(statusData.txHash);
-        });
-
-        // Update confirmation count
-        const confirmationCountEl = document.getElementById('confirmation-count');
-        if (confirmationCountEl) {
-            confirmationCountEl.textContent = statusData.confirmations || 0;
-        }
-    }
-
-    /**
-     * Update success screen with status data
-     * @param {Object} statusData - Payment status data
-     */
-    updateSuccessStatus(statusData) {
-        // Update transaction hash
-        const hashElements = document.querySelectorAll('.transaction-hash');
-        hashElements.forEach(el => {
-            el.textContent = this.paymentApi.formatTransactionHash(statusData.txHash);
-        });
-
-        // Update confirmation date
-        const dateEl = document.getElementById('confirmation-date');
-        if (dateEl && statusData.confirmedAt) {
-            dateEl.textContent = this.paymentApi.formatDate(statusData.confirmedAt);
-        }
-    }
-
-    /**
-     * Show a specific screen
-     * @param {string} screenId - Screen ID to show
-     */
-    showScreen(screenId) {
-        document.querySelectorAll('.screen').forEach(screen => {
-            screen.classList.remove('active');
-        });
-        document.getElementById(screenId).classList.add('active');
-    }
-
-    /**
-     * Set up event listeners
-     */
-    setupEventListeners() {
-        // Copy address button
-        const copyBtn = document.querySelector('.copy-btn');
-        if (copyBtn) {
-            copyBtn.addEventListener('click', () => {
-                this.copyToClipboard(this.paymentData.address);
-            });
-        }
-
-        // Check status button
-        const checkStatusBtn = document.querySelector('#payment-screen .payment-action .btn-primary');
-        if (checkStatusBtn) {
-            checkStatusBtn.addEventListener('click', () => {
-                this.checkPaymentStatus();
-            });
-        }
-
-        // View transaction button
-        const viewTxBtn = document.querySelector('#confirming-screen .payment-action .btn-outline-secondary');
-        if (viewTxBtn) {
-            viewTxBtn.addEventListener('click', () => {
-                const txHash = this.paymentData.txHash;
-                if (txHash) {
-                    window.open(this.paymentApi.getTransactionExplorerUrl(txHash), '_blank');
-                }
-            });
-        }
-
-        // Return to merchant button
-        const returnBtns = document.querySelectorAll('.btn-primary[onclick="returnToMerchant()"]');
-        returnBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                this.returnToMerchant();
-            });
-        });
-
-        // Try again button
-        const tryAgainBtn = document.querySelector('#error-screen .btn-primary');
-        if (tryAgainBtn) {
-            tryAgainBtn.addEventListener('click', () => {
-                this.showScreen('payment-screen');
-                this.startCountdown();
-                this.startStatusCheck();
-            });
-        }
-        
-        // View transaction history button (if exists)
-        const historyBtn = document.querySelector('.view-history-btn');
-        if (historyBtn) {
-            historyBtn.addEventListener('click', () => {
-                this.showTransactionHistory();
-            });
-        }
-        
-        // Notification toggle
-        const notificationToggle = document.querySelector('#notification-toggle');
-        if (notificationToggle) {
-            notificationToggle.checked = this.paymentApi.notificationsEnabled;
-            notificationToggle.addEventListener('change', (e) => {
-                this.paymentApi.notificationsEnabled = e.target.checked;
-                localStorage.setItem('notificationsEnabled', e.target.checked);
-                
-                if (e.target.checked) {
-                    this.checkNotificationPermission();
-                }
-            });
-        }
-    }
-
-    /**
-     * Copy text to clipboard
-     * @param {string} text - Text to copy
-     */
-    copyToClipboard(text) {
-        navigator.clipboard.writeText(text).then(() => {
-            const copyBtn = document.querySelector('.copy-btn');
-            const originalText = copyBtn.innerHTML;
-            copyBtn.innerHTML = '<i class="bi bi-check"></i> Copied!';
-            setTimeout(() => {
-                copyBtn.innerHTML = originalText;
-            }, 2000);
-        }).catch(err => {
-            console.error('Failed to copy: ', err);
-        });
-    }
-
-    /**
-     * Return to merchant website
-     */
-    returnToMerchant() {
-        if (this.merchantReturnUrl) {
-            window.location.href = this.merchantReturnUrl;
-        } else {
-            alert('Redirecting to merchant site...');
-        }
-    }
-
-    /**
-     * Set up currency selector
-     */
-    setupCurrencySelector() {
-        const currencySelector = document.querySelector('#currency-selector');
-        if (!currencySelector) return;
-        
-        // Clear existing options
-        currencySelector.innerHTML = '';
-        
-        // Add options for each supported currency
-        const currencies = this.paymentApi.getSupportedCurrencies();
-        currencies.forEach(currency => {
-            const option = document.createElement('option');
-            option.value = currency;
-            option.textContent = currency;
-            if (currency === this.paymentApi.getPreferredCurrency()) {
-                option.selected = true;
-            }
-            currencySelector.appendChild(option);
-        });
-        
-        // Add change event listener
-        currencySelector.addEventListener('change', (e) => {
-            const newCurrency = e.target.value;
-            this.paymentApi.setPreferredCurrency(newCurrency);
-            // Update displayed rates if we're showing them
-            this.updateExchangeRateDisplay();
-        });
+        // Additional implementation for UI initialization
     }
     
-    /**
-     * Set up theme toggle
-     */
-    setupThemeToggle() {
-        const themeToggle = document.querySelector('#theme-toggle');
-        if (!themeToggle) return;
-        
-        // Set initial state based on saved preference
-        themeToggle.checked = this.paymentApi.isDarkMode;
-        
-        // Add change event listener
-        themeToggle.addEventListener('change', (e) => {
-            this.paymentApi.isDarkMode = e.target.checked;
-            localStorage.setItem('darkMode', e.target.checked);
-            this.applyTheme();
-        });
-    }
-    
-    /**
-     * Apply theme based on current setting
-     */
+    // Apply theme based on saved preference
     applyTheme() {
-        const root = document.documentElement;
         if (this.paymentApi.isDarkMode) {
-            root.classList.add('dark-mode');
-            // Update dark mode variables
-            root.style.setProperty('--background-color', '#121212');
-            root.style.setProperty('--text-color', '#e0e0e0');
-            root.style.setProperty('--card-bg', '#1e1e1e');
-            root.style.setProperty('--border-color', '#333');
+            document.body.classList.add('dark-mode');
         } else {
-            root.classList.remove('dark-mode');
-            // Reset to light mode variables
-            root.style.setProperty('--background-color', '#f8f9fa');
-            root.style.setProperty('--text-color', '#2c3e50');
-            root.style.setProperty('--card-bg', '#ffffff');
-            root.style.setProperty('--border-color', '#dee2e6');
+            document.body.classList.remove('dark-mode');
         }
     }
     
-    /**
-     * Update exchange rate display
-     */
-    async updateExchangeRateDisplay() {
-        const ratesContainer = document.querySelector('#exchange-rates');
-        if (!ratesContainer) return;
-        
-        try {
-            const baseCurrency = this.paymentApi.getPreferredCurrency();
-            const rates = await this.paymentApi.getCachedExchangeRates(baseCurrency);
-            
-            // Clear existing rates
-            ratesContainer.innerHTML = '';
-            
-            // Add header
-            const header = document.createElement('div');
-            header.className = 'rates-header';
-            header.textContent = `Exchange Rates (${baseCurrency})`;
-            ratesContainer.appendChild(header);
-            
-            // Add rates
-            Object.entries(rates.rates).forEach(([currency, rate]) => {
-                if (currency !== baseCurrency) {
-                    const rateItem = document.createElement('div');
-                    rateItem.className = 'rate-item';
-                    rateItem.innerHTML = `<span>${currency}</span><span>${rate}</span>`;
-                    ratesContainer.appendChild(rateItem);
-                }
-            });
-            
-            // Add timestamp
-            const timestamp = document.createElement('div');
-            timestamp.className = 'rates-timestamp';
-            timestamp.textContent = `Updated: ${this.paymentApi.formatDate(rates.timestamp)}`;
-            ratesContainer.appendChild(timestamp);
-        } catch (error) {
-            console.error('Error updating exchange rates display:', error);
-            ratesContainer.innerHTML = '<div class="error">Could not load exchange rates</div>';
-        }
-    }
-    
-    /**
-     * Show transaction history
-     */
-    async showTransactionHistory() {
-        const historyContainer = document.querySelector('#transaction-history');
-        if (!historyContainer) return;
-        
-        try {
-            // Show loading state
-            historyContainer.innerHTML = '<div class="loading">Loading transaction history...</div>';
-            
-            // Fetch transaction history
-            const history = await this.paymentApi.getTransactionHistory({ limit: 10 });
-            
-            // Clear loading state
-            historyContainer.innerHTML = '';
-            
-            if (!history || !history.transactions || history.transactions.length === 0) {
-                historyContainer.innerHTML = '<div class="no-data">No transaction history available</div>';
-                return;
-            }
-            
-            // Create table
-            const table = document.createElement('table');
-            table.className = 'transaction-table';
-            
-            // Add header
-            const thead = document.createElement('thead');
-            thead.innerHTML = `
-                <tr>
-                    <th>Date</th>
-                    <th>Reference</th>
-                    <th>Amount</th>
-                    <th>Status</th>
-                </tr>
-            `;
-            table.appendChild(thead);
-            
-            // Add body
-            const tbody = document.createElement('tbody');
-            history.transactions.forEach(tx => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${this.paymentApi.formatDate(tx.createdAt)}</td>
-                    <td>${tx.reference}</td>
-                    <td>${this.paymentApi.formatCurrencyAmount(tx.amount, tx.currency)}</td>
-                    <td><span class="status-${tx.status}">${tx.status}</span></td>
-                `;
-                tbody.appendChild(row);
-            });
-            table.appendChild(tbody);
-            
-            historyContainer.appendChild(table);
-        } catch (error) {
-            console.error('Error showing transaction history:', error);
-            historyContainer.innerHTML = '<div class="error">Could not load transaction history</div>';
-        }
-    }
-    
-    /**
-     * Check notification permission
-     */
+    // Check if we can use browser notifications
     checkNotificationPermission() {
-        if (!('Notification' in window)) {
-            console.log('This browser does not support notifications');
-            return;
-        }
-        
-        if (Notification.permission === 'granted') {
-            this.notificationPermissionGranted = true;
-        } else if (Notification.permission !== 'denied') {
-            Notification.requestPermission().then(permission => {
-                if (permission === 'granted') {
-                    this.notificationPermissionGranted = true;
-                }
-            });
-        }
-    }
-    
-    /**
-     * Show notification
-     * @param {string} title - Notification title
-     * @param {string} message - Notification message
-     */
-    showNotification(title, message) {
-        if (!this.paymentApi.notificationsEnabled) return;
-        
-        // Play sound notification
-        try {
-            this.notificationSound.play();
-        } catch (e) {
-            console.warn('Could not play notification sound:', e);
-        }
-        
-        // Show browser notification if permission granted
-        if (this.notificationPermissionGranted) {
-            try {
-                new Notification(title, {
-                    body: message,
-                    icon: '/favicon.ico'
+        if (this.paymentApi.notificationsEnabled && 'Notification' in window) {
+            if (Notification.permission === 'granted') {
+                this.notificationPermissionGranted = true;
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(permission => {
+                    this.notificationPermissionGranted = permission === 'granted';
                 });
-            } catch (e) {
-                console.warn('Could not show browser notification:', e);
             }
         }
-        
-        // Show in-app notification
-        const notificationEl = document.createElement('div');
-        notificationEl.className = 'in-app-notification';
-        notificationEl.innerHTML = `
-            <div class="notification-title">${title}</div>
-            <div class="notification-message">${message}</div>
-        `;
-        
-        document.body.appendChild(notificationEl);
-        
-        // Remove after 5 seconds
-        setTimeout(() => {
-            notificationEl.classList.add('fade-out');
-            setTimeout(() => {
-                document.body.removeChild(notificationEl);
-            }, 500);
-        }, 5000);
-    }
-    
-    /**
-     * Clean up resources
-     */
-    cleanup() {
-        this.stopCountdown();
-        this.stopStatusCheck();
     }
 }
 
