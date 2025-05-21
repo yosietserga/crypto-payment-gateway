@@ -26,7 +26,7 @@ let queueService: QueueService;
 
 // This would be properly initialized in a real application
 // For now, we'll initialize it when it's needed
-const getAdminDashboardService = () => {
+const getAdminDashboardService = async () => {
   if (!adminDashboardService) {
     // Initialize dependencies
     if (!blockchainService) {
@@ -40,7 +40,7 @@ const getAdminDashboardService = () => {
     }
     
     if (!walletService) {
-      walletService = new WalletService();
+      walletService = await WalletService.getInstance();
     }
     
     if (!settlementService) {
@@ -76,7 +76,7 @@ router.get(
   '/dashboard',
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const adminService = getAdminDashboardService();
+      const adminService = await getAdminDashboardService();
       const overview = await adminService.getSystemOverview();
       
       res.status(200).json({
@@ -111,7 +111,7 @@ router.get(
     const limit = req.query.limit as any || 20;
 
     try {
-      const adminService = getAdminDashboardService();
+      const adminService = await getAdminDashboardService();
       const merchantList = await adminService.getMerchantList(page, limit);
       
       res.status(200).json({
@@ -144,7 +144,7 @@ router.get(
     const merchantId = req.params.id;
 
     try {
-      const adminService = getAdminDashboardService();
+      const adminService = await getAdminDashboardService();
       const merchantDetails = await adminService.getMerchantDetails(merchantId);
       
       res.status(200).json({
@@ -194,7 +194,7 @@ router.get(
     if (req.query.toAddress) filters.toAddress = req.query.toAddress;
 
     try {
-      const adminService = getAdminDashboardService();
+      const adminService = await getAdminDashboardService();
       const transactionList = await adminService.getTransactionList(filters, page, limit);
       
       res.status(200).json({
@@ -227,7 +227,7 @@ router.get(
     const transactionId = req.params.id;
 
     try {
-      const adminService = getAdminDashboardService();
+      const adminService = await getAdminDashboardService();
       const transactionDetails = await adminService.getTransactionDetails(transactionId);
       
       res.status(200).json({
@@ -250,7 +250,7 @@ router.get(
   '/wallets',
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const adminService = getAdminDashboardService();
+      const adminService = await getAdminDashboardService();
       const walletOverview = await adminService.getWalletOverview();
       
       res.status(200).json({
@@ -283,7 +283,7 @@ router.post(
     const merchantId = req.params.id;
 
     try {
-      const adminService = getAdminDashboardService();
+      const adminService = await getAdminDashboardService();
       const result = await adminService.triggerMerchantSettlement(merchantId);
       
       res.status(200).json({
@@ -306,7 +306,7 @@ router.post(
   '/settlements/cold-storage',
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const adminService = getAdminDashboardService();
+      const adminService = await getAdminDashboardService();
       const result = await adminService.triggerColdStorageTransfer();
       
       res.status(200).json({
@@ -355,7 +355,7 @@ router.get(
     if (req.query.endDate) filters.endDate = req.query.endDate;
 
     try {
-      const adminService = getAdminDashboardService();
+      const adminService = await getAdminDashboardService();
       const auditLogs = await adminService.getAuditLogs(filters, page, limit);
       
       res.status(200).json({

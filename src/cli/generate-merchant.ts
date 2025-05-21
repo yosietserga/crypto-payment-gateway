@@ -87,7 +87,7 @@ async function createMerchant() {
     // Create user
     const user = new User();
     user.email = options.email;
-    user.password = hashedPassword;
+    user.passwordPlain = options.password; // Using setter to mark password as changed
     user.firstName = options.contactName.split(' ')[0] || ''; // Extract first name from contact name
     user.lastName = options.contactName.split(' ').slice(1).join(' ') || ''; // Extract last name from contact name
     user.role = options.role as UserRole;

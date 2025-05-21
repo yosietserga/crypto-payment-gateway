@@ -108,7 +108,7 @@ export class BlockchainService {
       
       // Import WalletService dynamically to avoid circular dependencies
       const { WalletService } = await import('./walletService');
-      const walletService = new WalletService();
+      const walletService = await WalletService.getInstance();
       
       // Generate address using WalletService
       const paymentAddress = await walletService.generatePaymentAddress(

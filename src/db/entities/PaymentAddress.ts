@@ -56,6 +56,9 @@ export class PaymentAddress {
   currency: string; // USDT, etc.
 
   @Column({ nullable: true })
+  reference: string; // External reference ID for merchant use
+
+  @Column({ nullable: true })
   expiresAt: Date; // When this address expires
 
   @Column({ default: false })

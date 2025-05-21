@@ -15,10 +15,11 @@ import transactionRoutes from './api/routes/transaction.routes';
 import webhookRoutes from './api/routes/webhook.routes';
 import adminRoutes from './api/routes/admin.routes';
 import merchantRoutes from './api/routes/merchant.routes';
-import paymentWebappRoutes from './api/routes/payment-webapp.routes';
+import paymentWebappRoutes from './api/routes/payment.routes';
 import payoutRoutes from './api/routes/payout.routes';
 import binanceRoutes from './api/routes/binance.routes';
 import binanceWebhookRoutes from './api/routes/binance-webhook.routes';
+import apiKeyRoutes from './api/routes/api-key.routes';
 //import compatibilityRoutes from './api/routes/compatibility.routes';
 
 // Initialize express app
@@ -83,17 +84,18 @@ const apiPrefix = isSandbox ? '/sandbox/api/v1' : '/api/v1';
 // Log the environment mode
 logger.info(`Starting server in ${isSandbox ? 'SANDBOX' : 'PRODUCTION'} mode`);
 
-// API routes
+// API routes with versioning
 app.use(`${apiPrefix}/auth`, authRoutes);
 app.use(`${apiPrefix}/addresses`, addressRoutes);
 app.use(`${apiPrefix}/transactions`, transactionRoutes);
 app.use(`${apiPrefix}/webhooks`, webhookRoutes);
 app.use(`${apiPrefix}/admin`, adminRoutes);
 app.use(`${apiPrefix}/merchant`, merchantRoutes);
-app.use(`${apiPrefix}/payment`, paymentWebappRoutes);
+app.use(`${apiPrefix}/payments`, paymentWebappRoutes);
 app.use(`${apiPrefix}/payouts`, payoutRoutes);
 app.use(`${apiPrefix}/binance`, binanceRoutes);
 app.use(`${apiPrefix}/binance-webhooks`, binanceWebhookRoutes);
+app.use(`${apiPrefix}/api-keys`, apiKeyRoutes);
 
 // Compatibility routes for documented API endpoints
 //app.use('/api/v1', compatibilityRoutes);

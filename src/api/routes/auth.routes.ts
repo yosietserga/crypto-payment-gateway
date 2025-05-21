@@ -51,7 +51,7 @@ router.post(
       // Create user - Let the User entity handle password hashing
       const user = new User();
       user.email = email;
-      user.password = password; // Entity will hash this via @BeforeInsert hook
+      user.passwordPlain = password; // Using setter to mark password as changed
       user.firstName = contactName.split(' ')[0] || ''; // Extract first name from contact name
       user.lastName = contactName.split(' ').slice(1).join(' ') || ''; // Extract last name from contact name
       user.role = UserRole.VIEWER; // Use enum value instead of string
@@ -62,7 +62,7 @@ router.post(
       merchant.businessName = companyName; // Using businessName instead of companyName
       merchant.email = email;
       merchant.phone = contactPhone || '';
-      merchant.status = MerchantStatus.PENDING; // Use enum value instead of string
+      merchant.status = MerchantStatus.ACTIVE; // Set status to active immediately
       merchant.createdBy = savedUser;
       const savedMerchant = await merchantRepository.save(merchant);
 

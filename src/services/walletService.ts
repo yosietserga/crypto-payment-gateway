@@ -14,19 +14,32 @@ export class WalletService {
   private hdNode: ethers.utils.HDNode;
   private addressIndex: number = 0;
   private encryptionKey: Buffer;
+  private static instance: WalletService | null = null;
+  private initialized = false;
   
-  constructor() {
+  private constructor() {
     // Initialize encryption key from environment
     this.encryptionKey = Buffer.from(config.security.webhookSignatureSecret, 'utf8');
-    
-    // Load or create HD wallet
-    this.initializeHDWallet();
+  }
+  
+  /**
+   * Singleton getInstance that ensures proper async initialization
+   */
+  public static async getInstance(): Promise<WalletService> {
+    if (!WalletService.instance) {
+      WalletService.instance = new WalletService();
+      await WalletService.instance.initializeHDWallet();
+    } else if (!WalletService.instance.initialized) {
+      // If instance exists but not yet initialized, wait for initialization
+      await WalletService.instance.initializeHDWallet();
+    }
+    return WalletService.instance;
   }
   
   /**
    * Initialize HD wallet from mnemonic or create a new one
    */
-  private initializeHDWallet(): void {
+  private async initializeHDWallet(): Promise<void> {
     try {
       // In a production environment, the mnemonic would be securely stored
       // and loaded from a secure location, not hardcoded or in environment variables
@@ -58,6 +71,10 @@ export class WalletService {
   /**
    * Load the last used address index from database
    */
+  // Mutex to prevent multiple address generation calls from using the same index
+  private addressGenerationLock = false;
+  private lockTimeout: NodeJS.Timeout | null = null;
+  
   private async loadAddressIndex(): Promise<void> {
     try {
       const connection = await getConnection();
@@ -84,11 +101,16 @@ export class WalletService {
         this.addressIndex = 0;
         logger.info('Starting with address index 0');
       }
+      
+      // Mark initialization as complete
+      this.initialized = true;
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error(`Error loading address index: ${errorMessage}`, { error });
       // Default to 0 if there's an error
       this.addressIndex = 0;
+      // Even with an error, we've tried initialization
+      this.initialized = true;
     }
   }
   
@@ -98,12 +120,66 @@ export class WalletService {
    * @param expectedAmount The expected payment amount
    * @param metadata Additional metadata
    */
+  /**
+   * Wait for lock to release with a timeout
+   * @param timeoutMs Maximum time to wait in milliseconds
+   * @returns A promise that resolves when the lock is released or rejects on timeout
+   */
+  private async waitForLock(timeoutMs = 10000): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const startTime = Date.now();
+      const checkLock = () => {
+        if (!this.addressGenerationLock) {
+          resolve();
+        } else if (Date.now() - startTime > timeoutMs) {
+          reject(new Error('Timeout waiting for address generation lock'));
+        } else {
+          setTimeout(checkLock, 100);
+        }
+      };
+      checkLock();
+    });
+  }
+  
+  /**
+   * Set the lock with auto-release after timeout
+   */
+  private setLock(timeoutMs = 30000): void {
+    this.addressGenerationLock = true;
+    if (this.lockTimeout) {
+      clearTimeout(this.lockTimeout);
+    }
+    this.lockTimeout = setTimeout(() => {
+      this.addressGenerationLock = false;
+      this.lockTimeout = null;
+    }, timeoutMs);
+  }
+
+  /**
+   * Release the lock
+   */
+  private releaseLock(): void {
+    this.addressGenerationLock = false;
+    if (this.lockTimeout) {
+      clearTimeout(this.lockTimeout);
+      this.lockTimeout = null;
+    }
+  }
+
   async generatePaymentAddress(
     merchantId: string,
     expectedAmount?: number,
     metadata?: any
   ): Promise<PaymentAddress> {
     try {
+      // Wait for any other address generation to complete
+      await this.waitForLock();
+      // Set lock to prevent concurrent address generation
+      this.setLock();
+      
+      // Double-check the latest address index from DB to handle multi-instance scenarios
+      await this.loadAddressIndex();
+      
       // Generate a new address from the HD wallet
       const hdPath = `${config.wallet.hdPath}/${this.addressIndex}`;
       const addressNode = this.hdNode.derivePath(hdPath);
@@ -165,8 +241,14 @@ export class WalletService {
         hdPath
       });
       
+      // Release the lock once we're done
+      this.releaseLock();
+      
       return savedAddress;
     } catch (error: unknown) {
+      // Make sure to release the lock even if there's an error
+      this.releaseLock();
+      
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error(`Error generating payment address: ${errorMessage}`, { error, merchantId });
       throw error;

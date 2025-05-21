@@ -71,13 +71,29 @@ export class User {
   @OneToOne(() => Merchant, merchant => merchant.createdBy)
   merchant!: Merchant;
 
+  // Track if password was changed
+  private passwordChanged = false;
+
+  // Setter for password that marks it as changed
+  set passwordPlain(value: string) {
+    this.password = value;
+    this.passwordChanged = true;
+  }
+
   // Hash password before inserting or updating
   @BeforeInsert()
-  @BeforeUpdate()
-  async hashPassword() {
-    // Only hash the password if it has been modified
+  async hashPasswordOnInsert() {
     if (this.password) {
       this.password = await bcrypt.hash(this.password, config.security.bcryptSaltRounds);
+    }
+  }
+
+  @BeforeUpdate()
+  async hashPasswordOnUpdate() {
+    // Only hash the password if it was explicitly changed
+    if (this.passwordChanged && this.password) {
+      this.password = await bcrypt.hash(this.password, config.security.bcryptSaltRounds);
+      this.passwordChanged = false;
     }
   }
 

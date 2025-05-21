@@ -221,7 +221,16 @@ router.post(
     body('currency').isString().isIn(['USDT']),
     body('expectedAmount').isNumeric(),
     body('expiresAt').optional().isISO8601(),
-    body('callbackUrl').optional().isURL(),
+    body('callbackUrl').optional().custom(value => {
+      // Allow null, undefined, or a valid URL
+      if (!value || value === '') return true;
+      try {
+        new URL(value);
+        return true;
+      } catch (e) {
+        throw new Error('Invalid URL format');
+      }
+    }),
     body('metadata').optional().isObject()
   ],
   asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
@@ -236,8 +245,7 @@ router.post(
       return next(new ApiError(401, 'Merchant ID is required', true));
     }
     
-    const { currency, expectedAmount, expiresAt, callbackUrl, metadata } = req.body as PaymentAddressRequest;
-
+    const { currency, expectedAmount, callbackUrl, expiresAt, metadata } = req.body as PaymentAddressRequest;
     try {
       // Import services dynamically to avoid circular dependencies
       const { BlockchainService } = await import('../../services/blockchainService');

@@ -55,22 +55,7 @@ router.get(
           });
         }
       } catch (apiError) {
-        logger.error('Error from Binance API, providing mock balance data', { apiError });
-        
-        // Fallback to mock data if API fails
-        balances = [
-          { asset: 'BTC', free: '0.12345678', locked: '0.00000000', total: '0.12345678' },
-          { asset: 'ETH', free: '1.23456789', locked: '0.00000000', total: '1.23456789' },
-          { asset: 'USDT', free: '1234.56', locked: '0.00', total: '1234.56' },
-          { asset: 'BNB', free: '12.3456', locked: '0.0000', total: '12.3456' },
-          { asset: 'BUSD', free: '2345.67', locked: '0.00', total: '2345.67' },
-          { asset: 'USDC', free: '3456.78', locked: '0.00', total: '3456.78' }
-        ];
-        
-        // Filter by assets if specified
-        if (assets.length > 0) {
-          balances = balances.filter(balance => assets.includes(balance.asset));
-        }
+        logger.error('Error from Binance API', { apiError });
       }
       
       return res.json(balances);
@@ -113,49 +98,9 @@ router.get(
         const deposits = await binanceService.getDepositHistoryWithParams(params);
         return res.json(deposits);
       } catch (apiError) {
-        logger.error('Error from Binance API, providing mock deposit data', { apiError });
+        logger.error('Error from Binance API', { apiError });
         
-        // Fallback to mock data if API fails
-        const mockDeposits = [
-          {
-            id: 'dep_' + Date.now() + '1',
-            amount: '0.5',
-            coin: 'BTC',
-            network: 'BTC',
-            status: 1,  // 0:pending,1:success
-            address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
-            txId: '0x' + Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10),
-            insertTime: Date.now() - 86400000 * 3,
-            transferType: 0,  // 0:deposit
-            confirmTimes: '2/2'
-          },
-          {
-            id: 'dep_' + Date.now() + '2',
-            amount: '100',
-            coin: 'USDT',
-            network: 'ETH',
-            status: 1,
-            address: '0x' + Math.random().toString(16).slice(2, 42),
-            txId: '0x' + Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10),
-            insertTime: Date.now() - 86400000,
-            transferType: 0,
-            confirmTimes: '12/12'
-          },
-          {
-            id: 'dep_' + Date.now() + '3',
-            amount: '1.234',
-            coin: 'ETH',
-            network: 'ETH',
-            status: 1,
-            address: '0x' + Math.random().toString(16).slice(2, 42),
-            txId: '0x' + Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10),
-            insertTime: Date.now() - 86400000 * 2,
-            transferType: 0,
-            confirmTimes: '12/12'
-          }
-        ];
-        
-        return res.json(mockDeposits);
+        return res.json([]);
       }
     } catch (error) {
       logger.error('Error processing deposit history request', { error });
@@ -225,55 +170,9 @@ router.get(
         const withdrawals = await binanceService.getWithdrawalHistoryWithParams(params);
         return res.json(withdrawals);
       } catch (apiError) {
-        logger.error('Error from Binance API, providing mock withdrawal data', { apiError });
+        logger.error('Error from Binance API', { apiError });
         
-        // Fallback to mock data if API fails
-        const mockWithdrawals = [
-          {
-            id: 'wth_' + Date.now() + '1',
-            amount: '0.25',
-            transactionFee: '0.0005',
-            coin: 'BTC',
-            network: 'BTC',
-            status: 6, // 0:Email Sent,1:Cancelled,2:Awaiting Approval,3:Rejected,4:Processing,5:Failure,6:Completed
-            address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
-            txId: '0x' + Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10),
-            applyTime: Date.now() - 86400000 * 2,
-            completeTime: Date.now() - 86400000 * 2 + 3600000,
-            transferType: 1, // 1:withdraw
-            info: 'Withdrawal processed successfully'
-          },
-          {
-            id: 'wth_' + Date.now() + '2',
-            amount: '50',
-            transactionFee: '1',
-            coin: 'USDT',
-            network: 'ETH',
-            status: 6,
-            address: '0x' + Math.random().toString(16).slice(2, 42),
-            txId: '0x' + Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10),
-            applyTime: Date.now() - 86400000,
-            completeTime: Date.now() - 86400000 + 1800000,
-            transferType: 1,
-            info: 'Withdrawal processed successfully'
-          },
-          {
-            id: 'wth_' + Date.now() + '3',
-            amount: '0.5',
-            transactionFee: '0.001',
-            coin: 'ETH',
-            network: 'ETH',
-            status: 4, // Processing
-            address: '0x' + Math.random().toString(16).slice(2, 42),
-            txId: '',
-            applyTime: Date.now() - 3600000,
-            completeTime: 0,
-            transferType: 1,
-            info: 'Withdrawal is being processed'
-          }
-        ];
-        
-        return res.json(mockWithdrawals);
+        return res.json([]);
       }
     } catch (error) {
       logger.error('Error processing withdrawal history request', { error });
@@ -506,42 +405,9 @@ router.get(
       if (req.query.offset) params.offset = req.query.offset;
       
       try {
-        // In a real implementation, we would call the Binance Pay API
-        // For now, returning mock data as this endpoint is not critical
-        const mockPaymentTransactions = [
-          {
-            id: 'pay_' + Date.now() + '1',
-            amount: '150.00',
-            currency: 'BUSD',
-            status: 'SUCCESS',
-            createTime: Date.now() - 86400000, // 1 day ago
-            updateTime: Date.now() - 85400000,
-            type: 'MERCHANT_PAY',
-            description: 'Payment for order #1001'
-          },
-          {
-            id: 'pay_' + Date.now() + '2',
-            amount: '75.50',
-            currency: 'USDT',
-            status: 'SUCCESS',
-            createTime: Date.now() - 172800000, // 2 days ago
-            updateTime: Date.now() - 172700000,
-            type: 'MERCHANT_PAY',
-            description: 'Payment for order #1002'
-          },
-          {
-            id: 'pay_' + Date.now() + '3',
-            amount: '200.00',
-            currency: 'BUSD',
-            status: 'PROCESSING',
-            createTime: Date.now() - 3600000, // 1 hour ago
-            updateTime: Date.now() - 3500000,
-            type: 'MERCHANT_PAY',
-            description: 'Payment for order #1003'
-          }
-        ];
+        // todo: call the Binance Pay API
 
-        return res.json(mockPaymentTransactions);
+        return res.json([]);
       } catch (apiError) {
         logger.error('Error fetching payment transactions', { error: apiError });
         return res.status(500).json({
@@ -573,22 +439,7 @@ router.post(
     try {
       const { amount, currency, description } = req.body;
       
-      // In a real implementation, we would call the Binance Pay API
-      // For now, creating a mock response
-      const mockPaymentRequest = {
-        id: 'pay_req_' + Date.now(),
-        amount,
-        currency,
-        status: 'CREATED',
-        createTime: Date.now(),
-        updateTime: Date.now(),
-        description: description || 'Payment request',
-        expiryTime: Date.now() + 3600000, // 1 hour expiry
-        paymentUrl: `https://pay.binance.com/mockpayment/${Date.now()}`,
-        qrCode: `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==`
-      };
-      
-      return res.json(mockPaymentRequest);
+      return res.json([]);
     } catch (error) {
       logger.error('Error creating payment request', { error });
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
