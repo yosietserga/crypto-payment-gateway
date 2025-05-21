@@ -80,22 +80,33 @@ export class WalletService {
       const connection = await getConnection();
       const paymentAddressRepository = connection.getRepository(PaymentAddress);
       
-      // Find the payment address with the highest HD path index
-      const lastAddress = await paymentAddressRepository.findOne({
-        where: {
-          hdPath: Like(`${config.wallet.hdPath}%`)
-        },
-        order: {
-          hdPath: 'DESC'
-        }
-      });
+      // Find the payment address with the highest HD path index - look for both regular and hot wallet paths
+      const query = paymentAddressRepository.createQueryBuilder('address')
+        .where('address.hdPath LIKE :regularPath OR address.hdPath LIKE :hotPath', {
+          regularPath: `${config.wallet.hdPath}/%`,
+          hotPath: `${config.wallet.hdPath}/hot/%`
+        })
+        .orderBy('address.createdAt', 'DESC')
+        .take(1);
+      
+      const lastAddress = await query.getOne();
       
       if (lastAddress && lastAddress.hdPath) {
-        // Extract index from HD path
-        const match = lastAddress.hdPath.match(/\/([0-9]+)$/);
+        // Extract index from HD path - handle both regular and hot wallet paths
+        let match;
+        if (lastAddress.hdPath.includes('/hot/')) {
+          match = lastAddress.hdPath.match(/\/hot\/([0-9]+)$/);
+        } else {
+          match = lastAddress.hdPath.match(/\/([0-9]+)$/);
+        }
+        
         if (match && match[1]) {
           this.addressIndex = parseInt(match[1], 10) + 1;
           logger.info(`Loaded address index: ${this.addressIndex}`);
+        } else {
+          // If we couldn't extract the index for some reason, start from a safe value
+          this.addressIndex = Math.max(10, this.addressIndex);
+          logger.info(`Using safe address index: ${this.addressIndex}`);
         }
       } else {
         this.addressIndex = 0;
@@ -107,8 +118,9 @@ export class WalletService {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error(`Error loading address index: ${errorMessage}`, { error });
-      // Default to 0 if there's an error
-      this.addressIndex = 0;
+      // Default to 10 if there's an error - safer than 0 which might be already in use
+      this.addressIndex = 10;
+      logger.info(`Using fallback address index: ${this.addressIndex}`);
       // Even with an error, we've tried initialization
       this.initialized = true;
     }
@@ -164,6 +176,16 @@ export class WalletService {
       clearTimeout(this.lockTimeout);
       this.lockTimeout = null;
     }
+  }
+  
+  /**
+   * Force increment the address index - used in case of duplicate address errors
+   * @returns The new address index
+   */
+  public async forceIncrementAddressIndex(): Promise<number> {
+    this.addressIndex += 1;
+    logger.info(`Forced address index increment to: ${this.addressIndex}`);
+    return this.addressIndex;
   }
 
   async generatePaymentAddress(

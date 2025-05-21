@@ -100,7 +100,8 @@ export class BlockchainService {
   async generatePaymentAddress(
     merchantId: string,
     expectedAmount?: number,
-    metadata?: any
+    metadata?: any,
+    retryCount: number = 0
   ): Promise<PaymentAddress> {
     try {
       // Get connection to database
@@ -124,7 +125,24 @@ export class BlockchainService {
       
       return paymentAddress;
     } catch (error) {
+      // Check if the error is a database constraint error for duplicate address
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const isDuplicateAddressError = errorMessage.includes('duplicate key value') && 
+                                      errorMessage.includes('address');
+      
+      // If it's a duplicate address error and we haven't retried too many times, try again
+      if (isDuplicateAddressError && retryCount < 3) {
+        logger.warn(`Duplicate address detected, retrying with new index (attempt ${retryCount + 1})`, { merchantId });
+        
+        // Force wallet service to increment address index
+        const { WalletService } = await import('./walletService');
+        const walletService = await WalletService.getInstance();
+        await walletService.forceIncrementAddressIndex();
+        
+        // Retry with incremented retry count
+        return this.generatePaymentAddress(merchantId, expectedAmount, metadata, retryCount + 1);
+      }
+      
       logger.error(`Failed to generate payment address: ${errorMessage}`, { error, merchantId });
       throw error;
     }
